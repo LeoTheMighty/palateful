@@ -52,11 +52,13 @@ final pantryIngredientsProvider =
 bool _isPantryEvent(MutationEvent event) =>
     event is PantryItemAdded ||
     event is PantryItemUpdated ||
-    event is PantryItemRemoved;
+    event is PantryItemRemoved ||
+    event is PantryChangedExternally;
 
 bool _isPantryEventForId(MutationEvent event, String pantryId) {
   if (event is PantryItemAdded) return event.pantryId == pantryId;
   if (event is PantryItemUpdated) return event.pantryId == pantryId;
   if (event is PantryItemRemoved) return event.pantryId == pantryId;
+  if (event is PantryChangedExternally) return event.pantryId == pantryId;
   return false;
 }

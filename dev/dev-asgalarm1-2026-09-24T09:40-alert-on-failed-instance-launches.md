@@ -4,10 +4,10 @@ type: dev
 created: 2026-09-24T09:40:00-06:00
 title: Alert on failed instance launches — AWS already writes the diagnosis, nobody reads it
 from: leonidbelyi-41, relaying Leo, after spotback1 found 756 failed launch activities carrying both incidents' root causes verbatim
-spawned: pcap1
-status: ready
-owner: null
-branch: null
+spawned: pcap1, asgcause1
+status: done
+owner: palateful-0a
+branch: feat/dev-asgalarm1
 ---
 
 ## What makes this different from everything else in the ranking
@@ -265,3 +265,16 @@ than ours.
   on the same answer by accident is indistinguishable from a real
   corroboration, and the only thing that separated them was re-running it
   unfiltered.
+- 2026-09-24 — **backlog drift, named because it is the `stalebk1` shape and
+  not a one-off typo.** Until this entry, the DEV.md row read `[/]` /
+  "Status: in-progress" while this spec's frontmatter read `status: ready`,
+  and neither matched reality — the story had been applied at 17:22:29Z and
+  exercised by a real burst. Two records disagreeing with each other *and*
+  both disagreeing with the world is precisely how a finished item stays
+  invisible: a row that says in-progress is skipped by whoever scans for work
+  to pick up, and frontmatter that says ready is skipped by whoever scans for
+  work that is done. It was found only because the person who shipped it
+  happened to look; nobody scanning the backlog would have surfaced it. Row
+  and frontmatter both reconciled here, with the apply SHA (`41e7a8f8`) and
+  the drive result in the row so the next reader does not have to open this
+  file to learn the outcome.

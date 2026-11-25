@@ -58,9 +58,11 @@ stops being sufficient — `test_ingredients_are_not_a_shared_catalogue`
 pins it so the change fails loudly instead of silently widening this
 script's reach.
 
-Guards, identical in spirit to `delete_user.py`:
-`--confirm-email` must match the resolved user's email, and **admin
-accounts are refused outright with no override**.
+Guards, identical in spirit to `delete_user.py`: a second, *different*
+identifier must agree with the lookup — `--confirm-email` normally, or
+`--confirm-name` when the user has no email on record — and **admin
+accounts are refused outright with no override**. See
+`confirm_identity` for why that is not `--confirm-user-id`.
 
 Writes an audit row (`service="audit"`,
 `error_type="QaCleanupAudit"`).
@@ -128,6 +130,64 @@ def find_user(conn: Connection, id_or_email: str) -> list[dict[str, Any]]:
         {"value": id_or_email},
     )
     return [dict(row._mapping) for row in result]
+
+
+def confirm_identity(
+    user: dict, confirm_email: str | None, confirm_name: str | None
+) -> tuple[bool, str]:
+    """Check that a second, *different* identifier agrees with the lookup.
+
+    The property this enforces is not "the operator typed a confirmation".
+    It is **two different identifiers agree**, so that a typo in either
+    one resolves to a disagreement and fails closed.
+
+    Email is the confirmation when the user has one. When the email is
+    NULL — [M] which the prod QA identity is, measured 2026-09-24 — the
+    property is *unavailable*, not satisfied, so the script asks for
+    `--confirm-name` instead and refuses if neither is available.
+
+    **Deliberately not `--confirm-user-id`.** Re-typing the id the lookup
+    already used guards against mistyping it once, but not against
+    confidently pasting the *wrong* id twice — which is the realistic
+    failure, because an id comes from somewhere else (a spec, a message,
+    a dashboard) and is pasted, not typed. A confirmation that can be
+    satisfied by repeating the same wrong input is a confirmation
+    artefact, not a check.
+    """
+    email = (user.get("email") or "").strip().lower()
+    name = (user.get("name") or "").strip()
+
+    if email:
+        if not confirm_email:
+            return False, (
+                "this user has an email, so --confirm-email is required "
+                "(it must match the resolved user)"
+            )
+        if confirm_email.strip().lower() != email:
+            return False, (
+                "--confirm-email does not match the resolved user's email. "
+                "The lookup and your expectation disagree, which is what "
+                "this check is for."
+            )
+        return True, "confirmed by email"
+
+    if name:
+        if not confirm_name:
+            return False, (
+                "this user has no email on record, so --confirm-name is "
+                f"required instead (the resolved user is named {name!r})"
+            )
+        if confirm_name.strip() != name:
+            return False, (
+                "--confirm-name does not match the resolved user's name."
+            )
+        return True, "confirmed by name (user has no email)"
+
+    return False, (
+        "this user has neither an email nor a name, so nothing can "
+        "corroborate the lookup; refusing rather than proceeding on a "
+        "single identifier"
+    )
 
 
 def recipe_in_scope(
@@ -223,7 +283,16 @@ def main(argv: list[str] | None = None) -> int:
         description="Delete selected QA-owned content. Never deletes a user.",
     )
     parser.add_argument("--id-or-email", required=True)
-    parser.add_argument("--confirm-email", required=True)
+    parser.add_argument(
+        "--confirm-email",
+        help="must match the resolved user's email (required when they "
+        "have one)",
+    )
+    parser.add_argument(
+        "--confirm-name",
+        help="must match the resolved user's name; used instead of "
+        "--confirm-email when the user has no email on record",
+    )
     parser.add_argument(
         "--recipe", action="append", default=[], metavar="UUID",
         help="a recipe row id owned by the confirmed user (repeatable)",
@@ -262,14 +331,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
 
-        actual = (user.get("email") or "").strip().lower()
-        if not actual or actual != args.confirm_email.strip().lower():
-            print(
-                "REFUSING: --confirm-email does not match the resolved "
-                "user's email. The lookup and your expectation disagree.",
-                file=sys.stderr,
-            )
+        ok, reason = confirm_identity(
+            user, args.confirm_email, args.confirm_name
+        )
+        if not ok:
+            print(f"REFUSING: {reason}", file=sys.stderr)
             return 1
+        print(f"Identity {reason}.")
 
         print(f"Scoped to user: {user['id']}")
         print()
