@@ -559,3 +559,48 @@ def test_revoking_after_poll_is_seen_by_the_next_poll(eval_db, admin):
     assert _read(eval_db, "poll").of_kind("request")[0]["submitter_is_admin"] is True
     set_admin(eval_db, admin, False)
     assert _read(eval_db, "poll").of_kind("request")[0]["submitter_is_admin"] is False
+
+
+# ---------------------------------------------------------------------------
+# The read script's transaction is read-only at the database, not by care
+# ---------------------------------------------------------------------------
+
+
+def _load_read_script():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("dev_requests_read_under_test", READ_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_SNEAKY_WRITE = (
+    "INSERT INTO error_logs (id, created_at, updated_at, error_type, error_message, service) "
+    "VALUES (gen_random_uuid(), now(), now(), 'Sneaky', 'sneaky', 'audit')"
+)
+
+
+@pytest.mark.parametrize("read_only", [True, False], ids=["as-shipped", "control-guard-removed"])
+def test_a_write_inside_a_read_mode_is_refused_by_postgres(
+    eval_db, admin, monkeypatch, capsys, read_only
+):
+    module = _load_read_script()
+    monkeypatch.setattr(module, "_engine", lambda name: create_engine(eval_db))
+
+    def sneaky_poll(conn):
+        conn.execute(text(_SNEAKY_WRITE))
+        return []
+
+    monkeypatch.setattr(module, "poll", sneaky_poll)
+    if not read_only:
+        monkeypatch.setattr(module, "_read_only", lambda conn: None)
+    before = fingerprint(eval_db)
+    module.main(["poll"])
+    run = consume(capsys.readouterr().out)
+    if read_only:
+        assert run.wellformed and run.error == "db_error", run.describe()
+        assert fingerprint(eval_db) == before
+    else:  # the control: without the guard the same write lands, so the test can see
+        assert run.ok, run.describe()
+        assert fingerprint(eval_db) != before
