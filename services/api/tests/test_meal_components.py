@@ -24,6 +24,7 @@ from conftest import (
     MockRecipeBookUser,
 )
 
+from utils.classes.error_code import ErrorCode
 from utils.services.meal_service import (
     ComponentDuplicateError,
     ComponentNotFoundError,
@@ -379,6 +380,12 @@ class TestAddRecipeToMealEndpoint:
             json={"recipe_id": "r-missing"},
         )
         assert response.status_code == 404
+        # btri01: the offending id has to reach the client — the edit-mode
+        # picker marks the row from `data.recipe_ids`, and a bare banner
+        # leaves the user with no way to identify it.
+        body = response.json()
+        assert body["error_code"] == ErrorCode.MEAL_COMPONENT_UNREADABLE.value
+        assert body["data"]["recipe_ids"] == ["r-missing"]
 
     def test_non_writer_403(self, client, mock_async_db, mock_user):
         meal = _meal_with([])

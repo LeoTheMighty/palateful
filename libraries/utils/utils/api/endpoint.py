@@ -43,6 +43,7 @@ class APIException(Exception):
         detail: str,
         code: ErrorCode = ErrorCode.INTERNAL_ERROR,
         retryable: bool | None = None,
+        data: dict | None = None,
     ):
         super().__init__(detail)
         self.status_code = status_code
@@ -53,6 +54,13 @@ class APIException(Exception):
         # Dart reconciler) know whether to back off and retry vs. surface
         # a permanent failure to the user. None = caller hasn't classified.
         self.retryable = retryable
+        # btri01: structured payload for errors the client has to act on
+        # per-entity rather than per-request — e.g. `MEAL_COMPONENT_UNREADABLE`
+        # ships `{"recipe_ids": [...]}` so the Create Meal sheet can flag the
+        # offending rows instead of showing an un-actionable retry banner.
+        # `run()` threads this into `failure(data=...)`; None keeps the
+        # historical `"data": {}` body byte-for-byte.
+        self.data = data
 
     def __str__(self):
         return f"APIException(code={self.code}): {self.detail}"
@@ -166,7 +174,7 @@ class Endpoint:
                 error_code=e.code,
                 error_message=e.detail,
                 status=e.status_code,
-                data={},
+                data=e.data or {},
                 error=e,
                 retryable=e.retryable,
             )
@@ -411,7 +419,7 @@ class AsyncEndpoint(Endpoint):
                 error_code=e.code,
                 error_message=e.detail,
                 status=e.status_code,
-                data={},
+                data=e.data or {},
                 error=e,
                 retryable=e.retryable,
             )

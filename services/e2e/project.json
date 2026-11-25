@@ -7,21 +7,21 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash services/e2e/scripts/run_all.sh",
+        "command": "bash services/e2e/scripts/e2e_lifecycle.sh",
         "cwd": "{workspaceRoot}"
       }
     },
     "test-single": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "flutter drive --driver=test_driver/integration_test.dart --target={args.test} -d chrome --dart-define=E2E_MODE=true",
+        "command": "flutter drive --driver=test_driver/integration_test.dart --target={args.test} -d chrome --dart-define=E2E_MODE=true --dart-define=API_BASE_URL=http://localhost:8000",
         "cwd": "{workspaceRoot}/app"
       }
     },
     "test-headless": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "flutter test --platform chrome --dart-define=E2E_MODE=true {args.test}",
+        "command": "flutter test --platform chrome --dart-define=E2E_MODE=true --dart-define=API_BASE_URL=http://localhost:8000 {args.test}",
         "cwd": "{workspaceRoot}/app"
       }
     },

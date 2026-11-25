@@ -160,8 +160,16 @@ def materialize(
     Runs within the caller's transaction. Idempotent under concurrency via
     the unique partial index on (recurrence_rule_id, scheduled_at).
 
-    Returns the list of MealEvent rows currently attached to this rule
-    within the window [today, through_date).
+    Single-occurrence deletions are tombstones: the row keeps its
+    `recurrence_rule_id` and only gets `archived_at` set (see
+    `DeleteRecurrenceRule._delete_single_occurrence`). Because the tombstone
+    stays attached it still occupies its slot in `existing_by_ts`, so a later
+    window advance sees the timestamp as present and does not re-insert it.
+    Detaching instead (`recurrence_rule_id = NULL`) would hide the row from
+    this query and resurrect the occurrence on the next pass.
+
+    Returns the list of *live* MealEvent rows attached to this rule within
+    the window [today, through_date) — tombstones are excluded.
     """
     today = date.today()
     from_date = max(rule.start_date, today)
@@ -191,7 +199,9 @@ def materialize(
     )
     existing_by_ts = {e.scheduled_at: e for e in existing}
 
-    # Delete extras (dates no longer in expected set).
+    # Delete extras (dates no longer in expected set). Tombstones whose slot
+    # left the expected set go too — the slot no longer exists, so there is
+    # nothing left to suppress.
     for ts, event in existing_by_ts.items():
         if ts not in expected_utc:
             db.delete(event)
@@ -199,12 +209,16 @@ def materialize(
     title = _resolve_title(rule, db)
 
     # Update title on existing rows that remain (recipe-rename propagation).
+    # Tombstones are skipped: they are invisible to clients and rewriting
+    # them would only churn `updated_at`.
     for ts, event in existing_by_ts.items():
-        if ts in expected_utc and event.title != title:
+        if ts in expected_utc and event.archived_at is None and event.title != title:
             event.title = title
 
     # Insert missing rows using INSERT ... ON CONFLICT DO NOTHING to stay
-    # idempotent under concurrent materialize() calls.
+    # idempotent under concurrent materialize() calls. `existing_by_ts`
+    # deliberately includes tombstones so a user-deleted occurrence is not
+    # treated as missing.
     missing = sorted(expected_utc - set(existing_by_ts.keys()))
     if missing:
         insert_values = [
@@ -222,6 +236,14 @@ def materialize(
                 "calendar_id": rule.calendar_id,
                 "is_shared": rule.is_shared,
                 "recurrence_rule_id": rule.id,
+                # rcres1: materialized rows used to leave `is_recurring` at
+                # its False default, which made the flag a lie on every row
+                # generated from a rule. Clients key off `recurrence_rule_id`
+                # (the canonical signal, since it also names *which* rule),
+                # but the flag is exposed on every meal-event response schema,
+                # so it is set here rather than left as a trap. Nothing reads
+                # or filters on it server-side.
+                "is_recurring": True,
                 "status": "planned",
             }
             for ts in missing
@@ -234,10 +256,12 @@ def materialize(
 
     rule.materialized_through = through_date
 
-    # Return the updated set.
+    # Return the updated set — live rows only, so callers that count
+    # "rows touched" or hand these to clients never see a tombstone.
     refreshed = (
         db.query(MealEvent)
         .filter(MealEvent.recurrence_rule_id == rule.id)
+        .filter(MealEvent.archived_at.is_(None))
         .filter(MealEvent.scheduled_at >= today_utc)
         .filter(MealEvent.scheduled_at < through_utc)
         .all()

@@ -61,7 +61,10 @@ def call_endpoint(endpoint_cls: type[Endpoint], *args: Any, **kwargs: Any) -> st
     database = get_current_database()
 
     try:
-        result = endpoint_cls(database=database, user=user).run(*args, **kwargs)
+        # Endpoint args live on the constructor (`self.args` / `self.kwargs`);
+        # `run()` takes no arguments and forwards them to `execute`. Same
+        # calling convention the HTTP routers use via `Endpoint.call`.
+        result = endpoint_cls(*args, database=database, user=user, **kwargs).run()
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("MCP endpoint %s raised", endpoint_cls.__name__)
         return f"Error: {exc}"
@@ -93,7 +96,9 @@ async def call_endpoint_async(
     database = get_current_database_async()
 
     try:
-        result = await endpoint_cls(database=database, user=user).run(*args, **kwargs)
+        result = await endpoint_cls(
+            *args, database=database, user=user, **kwargs
+        ).run()
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("MCP async endpoint %s raised", endpoint_cls.__name__)
         return f"Error: {exc}"

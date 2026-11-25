@@ -253,7 +253,7 @@ ShoppingList _makeList({String name = 'Test List', List<dynamic> items = const [
     'is_shared': false,
     'items': items,
     'members': [],
-    'created_at': '2024-01-01T00:00:00.000Z',
+    'created_at': '2024-01-01T00:00:00.000Z',  // age-independent: createdAt never read
     'updated_at': '2024-01-01T00:00:00.000Z',
   });
 }

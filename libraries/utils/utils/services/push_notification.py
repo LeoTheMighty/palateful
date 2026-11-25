@@ -27,8 +27,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import firebase_admin
+from fastapi.concurrency import run_in_threadpool
 from firebase_admin import credentials, messaging
 
 logger = logging.getLogger(__name__)
@@ -561,6 +563,63 @@ class PushNotificationService:
         }
 
     # ------------------------------------------------------------------
+    # Async send APIs (aam-8-firebase-threadpool-wrap)
+    #
+    # The Firebase Admin SDK's `messaging.send*` calls are blocking HTTP,
+    # so async-path callers (AsyncEndpoint / async router handlers) must
+    # never invoke the sync methods above directly on the event loop.
+    # Each variant dispatches the ENTIRE sync body — FCM send, error_logs
+    # write, and invalid-token cleanup (which commits a sync DB session) —
+    # to the threadpool. The sync methods stay unchanged: the worker and
+    # other sync contexts keep calling them directly.
+    # ------------------------------------------------------------------
+
+    async def send_to_token_async(
+        self,
+        token: str,
+        notification: PushNotification,
+    ) -> dict[str, Any]:
+        """Async-safe `send_to_token` — sync body runs in the threadpool."""
+        return await run_in_threadpool(self.send_to_token, token, notification)
+
+    async def send_to_tokens_async(
+        self,
+        tokens: list[str],
+        notification: PushNotification,
+    ) -> dict[str, Any]:
+        """Async-safe `send_to_tokens` — sync body runs in the threadpool."""
+        return await run_in_threadpool(self.send_to_tokens, tokens, notification)
+
+    async def send_to_user_async(
+        self,
+        user: Any,  # User model
+        notification: PushNotification,
+        db_session: Any = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Async-safe `send_to_user` — sync body runs in the threadpool.
+
+        `db_session`, when provided for invalid-token cleanup, must be a
+        sync session — it is committed on the threadpool thread, never on
+        the event loop.
+        """
+        return await run_in_threadpool(
+            self.send_to_user, user, notification, db_session, force=force
+        )
+
+    async def send_to_users_async(
+        self,
+        users: list[Any],  # List of User models
+        notification: PushNotification,
+        db_session: Any = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Async-safe `send_to_users` — sync body runs in the threadpool."""
+        return await run_in_threadpool(
+            self.send_to_users, users, notification, db_session, force=force
+        )
+
+    # ------------------------------------------------------------------
     # Message builders (unchanged from prior impl)
     # ------------------------------------------------------------------
 
@@ -645,8 +704,38 @@ class PushNotificationService:
     # Helpers
     # ------------------------------------------------------------------
 
+    def _resolve_timezone(self, prefs: dict) -> ZoneInfo:
+        """Resolve the user's IANA timezone from prefs, defaulting to UTC.
+
+        Mirrors `_owner_timezone` in `send_meal_reminders.py`: a missing
+        or malformed `timezone` pref falls back to UTC rather than
+        raising. UTC is also the container's local time, so the fallback
+        matches the pre-fix behaviour for users whose prefs somehow lack
+        the field (the column default always supplies it).
+        """
+        tz_name = prefs.get("timezone")
+        if isinstance(tz_name, str) and tz_name.strip():
+            try:
+                return ZoneInfo(tz_name.strip())
+            except Exception:  # noqa: BLE001 — unknown / malformed tz string
+                logger.warning(
+                    "push_notifications: unknown quiet-hours timezone %r; "
+                    "falling back to UTC",
+                    tz_name,
+                )
+        return ZoneInfo("UTC")
+
     def _is_quiet_hours(self, prefs: dict) -> bool:
-        """Check if current time is within user's quiet hours."""
+        """Check if current time is within user's quiet hours.
+
+        The window is evaluated in the user's own `notification_preferences.
+        timezone` (IANA), NOT in server-local time. Every user row carries
+        a `quiet_hours_start`/`quiet_hours_end` default of 22:00–08:00 plus
+        a `timezone` default of `America/Denver`; evaluating that window
+        against the container clock (UTC) silently suppressed every
+        non-forced push between 16:00 and 02:00 local. See the btri01
+        triage note in BUGS.md.
+        """
         quiet_start = prefs.get("quiet_hours_start")
         quiet_end = prefs.get("quiet_hours_end")
 
@@ -654,7 +743,7 @@ class PushNotificationService:
             return False
 
         try:
-            now = datetime.now()
+            now = datetime.now(self._resolve_timezone(prefs))
             start_hour, start_min = map(int, quiet_start.split(":"))
             end_hour, end_min = map(int, quiet_end.split(":"))
 

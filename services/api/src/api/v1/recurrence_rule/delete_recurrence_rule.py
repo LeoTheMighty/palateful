@@ -19,8 +19,10 @@ class DeleteRecurrenceRule(AsyncEndpoint):
     scope=series (default): archive the rule, drop all future materialized rows.
     scope=this_and_following: set end_date = occurrence_date - 1 day, drop
                               materialized rows >= occurrence_date.
-    scope=this_occurrence: soft-delete the single matching meal_event row
-                           (detach-on-edit semantics).
+    scope=this_occurrence: tombstone the single matching meal_event row —
+                           set archived_at but keep recurrence_rule_id, so
+                           the materializer treats the slot as occupied and
+                           doesn't resurrect it.
     """
 
     async def execute(
@@ -153,9 +155,14 @@ class DeleteRecurrenceRule(AsyncEndpoint):
             )
         ).scalars().first()
         if event is not None:
+            # Tombstone, don't detach. The row keeps `recurrence_rule_id` so
+            # the materializer still sees it occupying this slot and skips
+            # re-inserting it on the next window advance. Detaching (setting
+            # `recurrence_rule_id = NULL`) made the row invisible to
+            # `materialize()`'s dedup query, which resurrected the occurrence.
+            # `archived_at` alone hides it from clients — list_meal_events and
+            # every other read path already filter `archived_at IS NULL`.
             event.archived_at = datetime.utcnow()
-            # Detach so a subsequent materialize pass doesn't re-insert.
-            event.recurrence_rule_id = None
 
         await self.db.commit()
         return success(data={"deleted": True, "id": str(rule.id)})

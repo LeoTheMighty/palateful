@@ -1,5 +1,12 @@
-# Minimum iOS version for Auth0 + Firebase
-platform :ios, '14.0'
+# Minimum iOS version for Auth0 + Firebase.
+#
+# iosdt1 (2026-09-20): raised 14.0 -> 15.0. Xcode Cloud runs a newer Xcode
+# whose supported deployment-target range starts at 15.0, so anything lower
+# fails `pod install` with "the range of supported deployment target versions
+# is 15.0 to 27.0" — 81 errors, one cause. This value, the six
+# IPHONEOS_DEPLOYMENT_TARGET entries in Runner.xcodeproj, and the post_install
+# floor below must agree; they had drifted to 14.0 / 13.0+14.0 / unset.
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -36,8 +43,25 @@ target 'Runner' do
   end
 end
 
+# Minimum the whole pod graph is forced up to. Keep in step with
+# `platform :ios` above and with Runner.xcodeproj.
+IOS_DEPLOYMENT_FLOOR = '15.0'
+
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+
+    # iosdt1: `flutter_additional_ios_build_settings` does NOT normalise
+    # transitive pods — each keeps whatever its own podspec declares, which
+    # here spanned 9.0 to 14.0 and produced the 81 errors. Raise anything
+    # below the floor, and deliberately leave anything ABOVE it alone: a pod
+    # that genuinely needs a newer iOS should fail loudly rather than be
+    # silently downgraded into a runtime crash.
+    target.build_configurations.each do |config|
+      current = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+      if current.nil? || Gem::Version.new(current.to_s) < Gem::Version.new(IOS_DEPLOYMENT_FLOOR)
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = IOS_DEPLOYMENT_FLOOR
+      end
+    end
   end
 end

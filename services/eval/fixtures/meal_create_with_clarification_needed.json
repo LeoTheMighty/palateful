@@ -1,0 +1,83 @@
+{
+  "id": "meal_create_with_clarification_needed",
+  "epic_fixture": 3,
+  "story": "msa-4",
+  "title": "No signal at all — AI lists candidates and asks, never guesses",
+  "description": "\"my two favorite salads\" gives the AI no way to pick. It must enumerate the candidates and ask. Strongest form of the zero-write bar: the whole trace commits nothing, so a model that guesses fails the fixture outright.",
+  "tags": [
+    "meals",
+    "mcp",
+    "create",
+    "ambiguity",
+    "zero-write"
+  ],
+  "context": {
+    "recipe_book_id": "b0000000-0000-4000-8000-000000000001",
+    "recipes": [
+      {
+        "id": "13000000-0000-4000-8000-000000000001",
+        "name": "Kale Salad"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000005",
+        "name": "Caesar Salad"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000006",
+        "name": "Greek Salad"
+      }
+    ],
+    "meals": []
+  },
+  "turns": [
+    {
+      "user": "Combine my two favorite salads into a meal.",
+      "expected_tool_calls": [
+        {
+          "name": "list_recipes",
+          "arguments": {
+            "book_id": "b0000000-0000-4000-8000-000000000001",
+            "search": "salad"
+          },
+          "tool_result": {
+            "items": [
+              {
+                "id": "13000000-0000-4000-8000-000000000001",
+                "name": "Kale Salad"
+              },
+              {
+                "id": "13000000-0000-4000-8000-000000000005",
+                "name": "Caesar Salad"
+              },
+              {
+                "id": "13000000-0000-4000-8000-000000000006",
+                "name": "Greek Salad"
+              }
+            ]
+          }
+        }
+      ],
+      "expect_clarifying_question": true,
+      "expect_response_contains": [
+        "Kale Salad",
+        "Caesar Salad",
+        "Greek Salad"
+      ]
+    }
+  ],
+  "assertions": {
+    "committed_write_calls": 0,
+    "blocked_write_calls": 0,
+    "required_tools": [
+      "list_recipes"
+    ],
+    "forbidden_tools": [
+      "create_meal",
+      "update_meal",
+      "add_recipe_to_meal",
+      "remove_recipe_from_meal",
+      "archive_meal",
+      "create_meal_event"
+    ]
+  }
+}

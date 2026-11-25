@@ -1,0 +1,127 @@
+{
+  "id": "meal_event_with_meal_id",
+  "epic_fixture": 7,
+  "story": "msa-4",
+  "title": "Schedule a Meal on the calendar via create_meal_event(meal_id=...)",
+  "description": "The msa-4 eval. \"Schedule the Summer Lunch Meal for Monday dinner\" must land on create_meal_event with meal_id set and recipe_id left null — the calendar epic's XOR is satisfied by omission, not by the MCP tool doing validation. calendar_id is read off the existing calendar (list_meal_events surfaces it) because CreateMealEvent requires it.",
+  "tags": [
+    "meals",
+    "mcp",
+    "calendar",
+    "meal_event",
+    "xor"
+  ],
+  "context": {
+    "recipe_book_id": "b0000000-0000-4000-8000-000000000001",
+    "today": "2026-07-27",
+    "recipes": [
+      {
+        "id": "13000000-0000-4000-8000-000000000001",
+        "name": "Kale Salad"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000002",
+        "name": "Lemon Dressing"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000007",
+        "name": "Grilled Chicken"
+      }
+    ],
+    "meals": [
+      {
+        "id": "ea000000-0000-4000-8000-000000000001",
+        "name": "Summer Lunch Meal",
+        "component_recipe_ids": [
+          "13000000-0000-4000-8000-000000000001",
+          "13000000-0000-4000-8000-000000000002",
+          "13000000-0000-4000-8000-000000000007"
+        ]
+      }
+    ],
+    "calendar_id": "ca000000-0000-4000-8000-000000000001"
+  },
+  "turns": [
+    {
+      "user": "Schedule the Summer Lunch Meal for Monday dinner.",
+      "expected_tool_calls": [
+        {
+          "name": "list_meals",
+          "optional": true,
+          "arguments": {
+            "q": "Summer Lunch"
+          },
+          "tool_result": {
+            "items": [
+              {
+                "id": "ea000000-0000-4000-8000-000000000001",
+                "name": "Summer Lunch Meal",
+                "component_count": 3
+              }
+            ],
+            "total": 1
+          }
+        },
+        {
+          "name": "list_meal_events",
+          "optional": true,
+          "arguments": {
+            "start_date": "2026-07-27",
+            "end_date": "2026-08-03"
+          },
+          "tool_result": {
+            "items": [
+              {
+                "id": "e0000000-0000-4000-8000-000000000002",
+                "title": "Grilled Chicken",
+                "scheduled_at": "2026-07-29T18:00:00Z",
+                "meal_type": "dinner",
+                "calendar_id": "ca000000-0000-4000-8000-000000000001"
+              }
+            ]
+          }
+        },
+        {
+          "name": "create_meal_event",
+          "arguments": {
+            "title": "Summer Lunch Meal",
+            "scheduled_at": "2026-08-03T18:00:00",
+            "meal_type": "dinner",
+            "meal_id": "ea000000-0000-4000-8000-000000000001",
+            "recipe_id": null,
+            "calendar_id": "ca000000-0000-4000-8000-000000000001"
+          },
+          "tool_result": {
+            "id": "e0000000-0000-4000-8000-000000000003",
+            "title": "Summer Lunch Meal",
+            "scheduled_at": "2026-08-03T18:00:00Z",
+            "meal_type": "dinner",
+            "meal_id": "ea000000-0000-4000-8000-000000000001",
+            "recipe": null,
+            "calendar_id": "ca000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "expect_clarifying_question": false,
+      "expect_response_contains": [
+        "Summer Lunch Meal",
+        "Monday",
+        "dinner"
+      ]
+    }
+  ],
+  "assertions": {
+    "committed_write_calls": 1,
+    "blocked_write_calls": 0,
+    "required_tools": [
+      "create_meal_event"
+    ],
+    "forbidden_tools": [
+      "create_meal",
+      "update_meal",
+      "add_recipe_to_meal",
+      "remove_recipe_from_meal",
+      "archive_meal"
+    ]
+  }
+}

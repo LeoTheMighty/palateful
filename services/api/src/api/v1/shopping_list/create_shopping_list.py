@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from api.v1.shopping_list.bootstrap import set_default_if_missing
 from pydantic import BaseModel
+from schemas.json_types import JsonDecimal
 from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.user import User
@@ -106,7 +107,7 @@ class CreateShoppingList(AsyncEndpoint):
     class ItemResponse(BaseModel):
         id: str
         name: str
-        quantity: Decimal | None = None
+        quantity: JsonDecimal | None = None
         unit: str | None = None
         is_checked: bool
         category: str | None = None

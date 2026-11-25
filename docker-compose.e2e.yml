@@ -5,11 +5,24 @@
 # file are preserved so normal user traffic still works.
 #
 # Start with: docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build -d
+# Or, for the full lifecycle: npx nx run e2e:test
 
 services:
   api:
     environment:
       E2E_TEST_MODE: "true"
+      # The bypass gate at services/api/src/dependencies.py requires
+      # `environment in ("development", "test")`; config.py defaults to
+      # "dev", so without this the E2E token is silently rejected and
+      # every flow 401s.
+      ENVIRONMENT: "development"
+      # Point the API at the same database `migrator-test` migrates
+      # (docker-compose.yml: migrator-test → …/test) instead of the base
+      # file's …/palateful. This both fixes the mismatch and isolates e2e
+      # writes from local dev data. No SQL seed is needed — the bypass
+      # lazy-seeds the e2e user via find_or_create_by. Compose merge lets
+      # this overlay value win over the base file's.
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/test
     depends_on:
       migrator-test:
         condition: service_completed_successfully

@@ -67,6 +67,8 @@ env:
 jobs:
   setup:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 2m09s — dependency install; a cold Poetry/yarn cache is the tail, not the median.
+    timeout-minutes: 15
     outputs:
       nx_base: ${{ steps.set-shas.outputs.base }}
       nx_head: ${{ steps.set-shas.outputs.head }}
@@ -117,6 +119,8 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 1m29s — cold cache is the tail risk, not the lint itself.
+    timeout-minutes: 15
     needs: setup
     steps:
       - uses: actions/setup-python@v5
@@ -155,8 +159,24 @@ jobs:
       - name: Run lint
         run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t lint --parallel=3
 
+      # Runs unconditionally (not `affected`): the thing it guards is a
+      # workflow file, which nx does not project-map. Extracts the measure
+      # step out of deploy-freshness.yml and runs it against a mocked ECS +
+      # a backdated sandbox repo — no AWS access, no prod mutation.
+      - name: Deploy-freshness self-test (E-7 step 5 guard)
+        run: bash tools/deploy-freshness-self-test.sh
+
+      # Same reason as above: absence-alert.yml is a workflow file, which nx
+      # does not project-map. And an absence check is the one kind whose
+      # healthy and broken states both look like silence, so the only way to
+      # keep it honest is to drive it into every verdict on each PR.
+      - name: Absence-alert self-test (absal1 guard)
+        run: bash tools/absence-alert-self-test.sh
+
   test:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 29m38s — max is the 4-commit accumulated range of 2026-09-24, not a single-PR run.
+    timeout-minutes: 60
     needs: setup
     services:
       postgres:
@@ -219,8 +239,15 @@ jobs:
       - name: Run migrations
         run: npx nx run migrator:migrate-test
 
+      # --exclude=app: this job is the Python suite and has no Flutter
+      # toolchain (only `flutter-test` runs subosito/flutter-action). Now
+      # that `app` is a registered nx project (nxappproj), `affected -t
+      # test` would otherwise select it here and fail on
+      # `/bin/sh: 1: flutter: not found`. The Dart suite runs in
+      # `flutter-test`; that job can't invoke `nx run app:test` because it
+      # never installs node_modules, so `npx` would fetch a stray nx.
       - name: Run tests
-        run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t test --parallel=3 --exclude=e2e
+        run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t test --parallel=3 --exclude=e2e,app
 
       - name: Upload test reports
         if: always()
@@ -240,6 +267,8 @@ jobs:
 
   check-models:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 2m06s.
+    timeout-minutes: 15
     needs: setup
     continue-on-error: true  # Pre-existing model/migration drift; tracked separately
     services:
@@ -302,9 +331,22 @@ jobs:
         run: npx nx run migrator:check-models
 
   flutter-test:
+    # The Analyze and Test steps below are mirrored by `app/project.json`
+    # (`npx nx run app:analyze` / `npx nx run app:test`), which is what local
+    # devs and devx's gate runner call. Change a flag here → change it there.
+    #
+    # Deliberately NOT routed through nx (nxappproj): this job installs only
+    # Flutter, so `npx nx` would need setup-node + a yarn install on every
+    # run to save zero duplication. Revisit if the job ever needs Node anyway.
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 8m45s — grep guards + analyze + the Dart suite.
+    timeout-minutes: 30
     steps:
+      # webpr1: full history so the web-compile step below can diff
+      # against the PR's base sha, which a depth-1 checkout lacks.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Keep channel + version in sync with .github/workflows/mobile-builds.yml
       # so CI doesn't pass on a Flutter version different from the one that
@@ -333,8 +375,11 @@ jobs:
         # Warnings (unused private methods, dead params) are shown but don't block CI.
         run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
-      - name: No silent catches (rp-5 grep guard)
+      - name: No silent catches (rp-5 grep guard + G12 core ratchet)
         run: bash tools/no-silent-catch-check.sh
+
+      - name: Silent-catch guard self-test (authrep1)
+        run: bash tools/silent-catch-self-test.sh
 
       - name: No cook-mode chat references (cmrc-2 grep guard)
         run: bash tools/no-cook-chat-check.sh
@@ -344,6 +389,9 @@ jobs:
 
       - name: No direct getRecipeBooks() (ffm-1 grep guard)
         run: bash tools/no-direct-get-recipe-books-check.sh
+
+      - name: No direct pantry mutations (pantrysync grep guard)
+        run: bash tools/no-direct-pantry-mutation-check.sh
 
       - name: No paywall language (pos-6a grep guard)
         run: bash tools/copy-grep-guard.sh
@@ -399,6 +447,40 @@ jobs:
 
           exit "$rc"
 
+      # ─── webpr1 — compile web on PRs that touch app/ ─────────────────
+      #
+      # Until this step, `flutter build web --release` ran only in
+      # deploy-web, on main pushes: a web-only break passed every PR check
+      # and first appeared as a failed prod deploy. `flutter analyze`
+      # cannot cover it — `auth_service.dart` conditionally imports
+      # `auth_service_stub.dart`, or `auth_service_web.dart` under
+      # `dart.library.html`, and the analyzer resolves the stub. A
+      # signature that drifts between the two analyzes clean and fails
+      # only when the web compile substitutes the real file (measured; see
+      # dev/dev-webpr1-*.md).
+      #
+      # Same command as deploy-web, so PR-green means deploy-green. Skipped
+      # when the PR leaves app/ alone, and not run on main pushes, where
+      # deploy-web compiles anyway.
+      - name: Detect app/ changes (PR only)
+        id: app_changed
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --name-only \
+               "${{ github.event.pull_request.base.sha }}" HEAD -- app/ \
+               | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Flutter web (PR compile check)
+        if: >-
+          github.event_name == 'pull_request' &&
+          steps.app_changed.outputs.changed == 'true'
+        working-directory: app
+        run: flutter build web --release
+
   # ptd-5 — `perf-budget-change` label auto-applied when the budget
   # yaml or waiver file is in the diff. Gives PR reviewers a fourth
   # independent cue that a budget raise is in flight (yaml diff,
@@ -406,6 +488,8 @@ jobs:
   perf-budget-label:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max seconds — label API call only.
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write
@@ -417,6 +501,8 @@ jobs:
 
   terraform:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 0m22s — fmt/validate, no network beyond provider download.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -458,15 +544,22 @@ jobs:
     # in app/lib/core/config/environment.dart, so `flutter build web` needs
     # no flags. Only CLOUDFLARE_* are true secrets.
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 2m06s — build + S3 sync.
+    timeout-minutes: 20
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [setup, lint, test, check-models, flutter-test, terraform]
     environment: production
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned to the same version flutter-test runs (webpr1): compiling
+      # the deploy with a different Flutter than CI tested with is the gap
+      # this story closes. Keep in sync with flutter-test and
+      # mobile-builds.yml.
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.41.7'
           cache: true
 
       - name: Cache pub dependencies
@@ -483,6 +576,9 @@ jobs:
 
       - name: Build Flutter web (prod)
         working-directory: app
+        # Mirrored by `npx nx run app:build-web` (app/project.json). Keep the
+        # flags identical; see the flutter-test job for why CI stays on the
+        # bare command.
         run: flutter build web --release
 
       - name: Deploy to Cloudflare Pages
@@ -517,6 +613,8 @@ jobs:
 
   detect-changes:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 1m15s.
+    timeout-minutes: 10
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [setup, lint, test, check-models, flutter-test, terraform]
     outputs:
@@ -527,6 +625,10 @@ jobs:
       # JSON array of affected services — fed into the deploy-images matrix
       # so each image builds on its own runner in parallel.
       services_to_build: ${{ steps.affected.outputs.services_to_build }}
+      # tfgate1: true when the `terraform` nx project (terraform/**) is
+      # affected. Lets terraform-prod apply an infra-only change instead of
+      # skipping it — see terraform-prod.
+      terraform: ${{ steps.affected.outputs.terraform }}
     steps:
       - uses: actions/setup-node@v4
         with:
@@ -573,6 +675,11 @@ jobs:
           else
             echo "parser=false" >> "$GITHUB_OUTPUT"
           fi
+          if echo "$AFFECTED" | grep -q "^terraform$"; then
+            echo "terraform=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "terraform=false" >> "$GITHUB_OUTPUT"
+          fi
 
           # Compose the deploy-images matrix. Two valid states:
           #   - At least one service affected → build ALL FOUR services so
@@ -615,6 +722,8 @@ jobs:
   # HEAD_SHA across the board with confidence.
   resolve-tags:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 0m03s.
+    timeout-minutes: 10
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: detect-changes
     outputs:
@@ -634,6 +743,8 @@ jobs:
 
   deploy-images:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 13m20s — slowest image (parser); Docker build + ECR push.
+    timeout-minutes: 40
     needs: detect-changes
     # Skip quietly when nothing is affected — GHA errors out on an empty
     # matrix ("Matrix vector 'service' does not contain any values"), so
@@ -685,6 +796,8 @@ jobs:
 
   terraform-prod:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 0m57s — apply waits on AWS resource creation, which the observed max does not exercise.
+    timeout-minutes: 30
     # deploy-images must complete before terraform updates task defs —
     # otherwise terraform points ECS at an image tag that isn't in ECR yet,
     # ECS accumulates CannotPullContainerError attempts, and the deployment
@@ -696,19 +809,45 @@ jobs:
     # design, every image tag terraform applies is HEAD_SHA, and HEAD_SHA
     # only exists in ECR if deploy-images actually built and pushed. If
     # deploy-images is skipped (no service affected — pubspec/docs/pure
-    # terraform edits), terraform-prod also skips. Terraform-only changes
-    # land via force-deploy.yml, not via passive piggybacking on a
-    # deploy-pipeline that no longer has any image to anchor on.
-    needs: [resolve-tags, deploy-images]
+    # terraform edits), HEAD_SHA tags would point ECS at images that were
+    # never built.
+    #
+    # tfgate1 (2026-09-22): that used to mean a Terraform-only change was
+    # never applied — it merged, planned cleanly, and silently did not
+    # exist (force-deploy.yml, the documented escape hatch, rebuilds and
+    # redeploys everything and had never succeeded). Now a Terraform-only
+    # change (deploy-images skipped AND the terraform project affected)
+    # applies against the image tags production is ACTUALLY running,
+    # resolved from AWS by tools/resolve-deployed-image-tags.sh. No image
+    # moves, so the ECR constraint above still holds.
+    #
+    # `!cancelled()` is load-bearing: a job whose `needs` include a skipped
+    # job is itself skipped unless its `if` contains a status function —
+    # without it this job would still skip in exactly the case it exists
+    # for. It does NOT loosen the failure path: a failed or cancelled
+    # deploy-images is neither 'success' nor 'skipped', so terraform-prod
+    # still stays off.
+    needs: [detect-changes, resolve-tags, deploy-images]
     if: >-
+      !cancelled() &&
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.deploy-images.result == 'success'
+      needs.resolve-tags.result == 'success' &&
+      (needs.deploy-images.result == 'success' ||
+       (needs.deploy-images.result == 'skipped' &&
+        needs.detect-changes.outputs.terraform == 'true'))
     environment: production
     env:
-      API_TAG: ${{ needs.resolve-tags.outputs.api_tag }}
-      WORKER_TAG: ${{ needs.resolve-tags.outputs.worker_tag }}
-      MIGRATOR_TAG: ${{ needs.resolve-tags.outputs.migrator_tag }}
-      PARSER_TAG: ${{ needs.resolve-tags.outputs.parser_tag }}
+      # 'success' → images were just built under HEAD_SHA, use them.
+      # anything else (only 'skipped' can reach here) → Terraform-only
+      # change; apply against the tags production is running.
+      #
+      # The four *_TAG variables are deliberately NOT set here. They are
+      # written once, by the "Resolve image tags" step, to $GITHUB_ENV.
+      # Setting them at job level too would make the Terraform-only path
+      # depend on whether $GITHUB_ENV can override a job-level `env:` value
+      # — and if it can't, terraform would silently get HEAD_SHA tags for
+      # images that were never built. One writer, no precedence question.
+      IMAGES_BUILT: ${{ needs.deploy-images.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -729,6 +868,44 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # tfgate1: the single writer of API_TAG / WORKER_TAG / MIGRATOR_TAG /
+      # PARSER_TAG for every later step (plan, apply, parser drift check).
+      #   images built   → HEAD_SHA tags from resolve-tags (unchanged path)
+      #   Terraform-only → the tags production is running, from AWS. Never
+      #                    HEAD_SHA: those images were not built.
+      # The resolver fails loudly on any tag that isn't a 40-hex SHA — a
+      # blank tag would plan an image change, the one thing this path must
+      # not do.
+      - name: Resolve image tags
+        env:
+          HEAD_API_TAG: ${{ needs.resolve-tags.outputs.api_tag }}
+          HEAD_WORKER_TAG: ${{ needs.resolve-tags.outputs.worker_tag }}
+          HEAD_MIGRATOR_TAG: ${{ needs.resolve-tags.outputs.migrator_tag }}
+          HEAD_PARSER_TAG: ${{ needs.resolve-tags.outputs.parser_tag }}
+        run: |
+          if [ "$IMAGES_BUILT" = "true" ]; then
+            {
+              echo "API_TAG=$HEAD_API_TAG"
+              echo "WORKER_TAG=$HEAD_WORKER_TAG"
+              echo "MIGRATOR_TAG=$HEAD_MIGRATOR_TAG"
+              echo "PARSER_TAG=$HEAD_PARSER_TAG"
+            } >> "$GITHUB_ENV"
+            echo "Images built this run — applying HEAD_SHA tags."
+          else
+            echo "::notice title=Terraform-only apply::No images were built; applying against the image tags production is running."
+            tools/resolve-deployed-image-tags.sh deployed.env
+            {
+              while IFS='=' read -r k v; do
+                case "$k" in
+                  api_tag)      echo "API_TAG=$v" ;;
+                  worker_tag)   echo "WORKER_TAG=$v" ;;
+                  migrator_tag) echo "MIGRATOR_TAG=$v" ;;
+                  parser_tag)   echo "PARSER_TAG=$v" ;;
+                esac
+              done < deployed.env
+            } >> "$GITHUB_ENV"
+          fi
 
       - name: Terraform init (prod)
         run: terraform init -backend-config=../../backend-prod.hcl
@@ -774,6 +951,8 @@ jobs:
 
   run-migrator:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max no successful sample in the window — ECS task run + migration.
+    timeout-minutes: 20
     needs: [terraform-prod, deploy-images, detect-changes]
     if: >-
       always() &&
@@ -841,6 +1020,8 @@ jobs:
 
   deploy-services:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 3m31s — ECS rolling deploy waits for a stable service.
+    timeout-minutes: 30
     needs: [run-migrator, terraform-prod, deploy-images, detect-changes]
     if: >-
       always() &&

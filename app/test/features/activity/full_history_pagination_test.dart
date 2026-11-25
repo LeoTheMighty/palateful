@@ -31,7 +31,7 @@ Map<String, dynamic> _page(int pageNumber, {String? nextCursor}) {
         'type': 'partner_action',
         'title': 'title-$rowIndex',
         'read': true,
-        'created_at': '2026-01-01T00:00:00Z',
+        'created_at': '2026-01-01T00:00:00Z',  // age-independent — provider-only walk; no widget reads created_at
         'archived_at': '2026-02-01T00:00:00Z',
       };
     }),

@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T11:42:00-06:00
 title: Upstream attended layer — devx-test skill, routing, QA.md carve-out
 from: plan/plan-41ee13-2026-07-27T10:36-browser-qa-agent.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-30T17-52-24-754-38586
 blocked-by: [bqa103]
 branch: feat/dev-bqa104
 ---
@@ -23,7 +24,10 @@ Fill the devx O-4 slot: the attended exploratory `/devx-test` skill, its dispatc
 - Cross-repo story: work lands in `~/personal/devx` (direct to its main). Sequenced after bqa103 (same repo; single version bump at end of this story).
 - Skill-body scope enforcement (one surface/story per invocation, no chained runs, `docs/QA.md:215-220`) + per-day cap = the E-4/G-5 cost guardrail.
 - FR-7 propagation is plain doc commits — no `devx revise` cascade; pln104 satisfied by lock (palateful `decisions/2026-07-27-hybrid-qa-driver.md`) → compare → update → this story.
-- Full context: plan `_devx/workstreams/browser-qa-agent/plan.md` §Phase 4.
+- Full context: plan `_devx/workstreams/browser-qa-agent/plan/agent.md` §Phase 4.
 
 ## Status log
 - 2026-07-27T11:42 — emitted from plan 41ee13 at RED-gate PASS (tests-after phase).
+- 2026-07-30T14:12:31-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
+- 2026-07-31T15:21:14.404Z — loop stopped mid-item (stopped by signal); worktree + claim preserved
+- 2026-09-20 — scope narrowed to AC4 + AC5 after an AC-by-AC read against `~/personal/devx`. AC1 (skill + mirror), AC2 ($1/day cap), AC3 (dispatcher + `decide.ts` routing) all verified shipped via devx PRs #113/#126/#146; provenance is the `Row 10.5 (bqa104)` comment at `src/lib/next/decide.ts:33`. AC4 not done — `docs/QA.md:55` still carries the blanket ❌ and `v2/07-decisions.md:141-144` still says "still open, nothing built". AC5 unverified, not failed. Claim released; row left `in-progress` rather than closed.

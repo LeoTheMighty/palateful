@@ -112,6 +112,70 @@ class TestCreateMealEvent:
         assert params.recipe_id == "rec-1"
         assert params.description == "linguine & clam sauce"
 
+    async def test_recipe_only_call_is_unchanged_by_msa4(self, mcp_context):
+        """Regression: the pre-epic recipe-only call shape still produces a
+        Params with `meal_id`/`calendar_id` left at None — the msa-4
+        signature extension is additive only."""
+        from mcp_server.tools.meal_planning import create_meal_event
+
+        with patch(
+            "mcp_server.tools.meal_planning.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
+            mock_call.return_value = "{}"
+            await create_meal_event(
+                title="Pasta Night",
+                scheduled_at="2026-05-01T18:30:00",
+                meal_type="dinner",
+                recipe_id="rec-1",
+            )
+        params = mock_call.call_args.kwargs["params"]
+        assert params.recipe_id == "rec-1"
+        assert params.meal_id is None
+        assert params.calendar_id is None
+
+    async def test_creates_with_meal_id(self, mcp_context):
+        from mcp_server.tools.meal_planning import create_meal_event
+
+        with patch(
+            "mcp_server.tools.meal_planning.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
+            mock_call.return_value = "{}"
+            await create_meal_event(
+                title="Summer Lunch",
+                scheduled_at="2026-05-04T18:30:00",
+                meal_type="dinner",
+                meal_id="meal-9",
+                calendar_id="cal-1",
+            )
+        params = mock_call.call_args.kwargs["params"]
+        assert params.meal_id == "meal-9"
+        assert params.recipe_id is None
+        assert params.calendar_id == "cal-1"
+
+    async def test_both_ids_pass_through_untouched(self, mcp_context):
+        """The MCP module owns zero XOR logic — both ids reach the
+        endpoint, which is what makes the 422 surface (Design Principle 14)."""
+        from mcp_server.tools.meal_planning import create_meal_event
+
+        with patch(
+            "mcp_server.tools.meal_planning.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
+            mock_call.return_value = "{}"
+            await create_meal_event(
+                title="Conflict",
+                scheduled_at="2026-05-04T18:30:00",
+                meal_type="dinner",
+                recipe_id="rec-1",
+                meal_id="meal-9",
+                calendar_id="cal-1",
+            )
+        params = mock_call.call_args.kwargs["params"]
+        assert params.recipe_id == "rec-1"
+        assert params.meal_id == "meal-9"
+
     async def test_bad_meal_type(self, mcp_context):
         from mcp_server.tools.meal_planning import create_meal_event
 
@@ -131,6 +195,40 @@ class TestCreateMealEvent:
                 scheduled_at="not-a-datetime",
                 meal_type="dinner",
             )
+
+
+class TestCreateMealEventXorBoundary:
+    """End-to-end through the real `call_endpoint_async` + real
+    `CreateMealEvent`, so the calendar epic's 422
+    (`MEAL_EVENT_RECIPE_XOR_MEAL`) is asserted as it actually reaches an
+    MCP client: a single `Error: ...` tool result.
+    """
+
+    @pytest.fixture
+    def real_dispatch_context(self, mock_async_db, mock_user):
+        from mcp_server.auth import current_database_async, current_user
+
+        utok = current_user.set(mock_user)
+        adtok = current_database_async.set(mock_async_db)
+        try:
+            yield mock_async_db
+        finally:
+            current_user.reset(utok)
+            current_database_async.reset(adtok)
+
+    async def test_both_ids_surface_422_as_mcp_error(self, real_dispatch_context):
+        from mcp_server.tools.meal_planning import create_meal_event
+
+        result = await create_meal_event(
+            title="Conflict",
+            scheduled_at="2026-05-04T18:30:00",
+            meal_type="dinner",
+            recipe_id="rec-1",
+            meal_id="meal-9",
+            calendar_id="cal-1",
+        )
+        assert result.startswith("Error:")
+        assert "mutually exclusive" in result
 
 
 class TestGetMealEvent:

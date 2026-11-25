@@ -1001,8 +1001,11 @@ class TestDeleteRecurrenceRule:
             f"/v1/recurrence-rules/{rule.id}?scope=this_occurrence&occurrence_date={target}"
         )
         assert response.status_code == 200
-        assert event.recurrence_rule_id is None
         assert event.archived_at is not None
+        # rcres1: the row stays attached to the rule so the materializer sees
+        # its slot as occupied. Detaching here resurrected the occurrence on
+        # the next window advance.
+        assert event.recurrence_rule_id == str(rule.id)
 
     def test_delete_scope_this_occurrence_no_event(
         self, client, mock_async_db, mock_user

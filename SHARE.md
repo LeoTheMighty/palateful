@@ -21,6 +21,29 @@ Total: ~1 h of human work, then ship.
 
 ## 1. Apple Developer: App ID + App Group + provisioning profile
 
+> **STATUS 2026-09-20 — §1 IS ALREADY DONE. Skip to §2.**
+>
+> Leo read Apple Developer → Identifiers on 2026-09-20:
+> **`com.palateful.palateful.share` is present.** §1a is done — do not
+> re-create it.
+>
+> §1b and §1c are done too, by evidence rather than by direct reading, and
+> the distinction is worth keeping: App Store Connect shows builds up to
+> **88**, and `PalatefulShare.appex` has been in Runner's *Embed App
+> Extensions* phase since `0a93369e` (2026-04-18). An `app-store` archive
+> signs every embedded target, so those uploads could not have succeeded
+> without the App Group capability on both identifiers **and** a
+> distribution profile for `.share`. If Xcode contradicts this, believe
+> Xcode and work through §1a–1c — but expect not to need it.
+>
+> **Why this notice exists.** This file asserted §1 was outstanding for five
+> months after it had been satisfied, and a checklist that trusted it would
+> have sent an operator through ~15 minutes of recreating things that
+> already existed. Nothing in the repo knew, because the work happened in
+> Apple's console and nothing writes back. **For anything living in Apple's
+> systems, the console is authoritative and this file is a cache nobody
+> invalidates.** Re-read the console before trusting any status here.
+
 ### 1a. Create the new App ID
 
 1. Go to <https://developer.apple.com/account/resources/identifiers/list>.

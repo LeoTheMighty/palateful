@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +9,7 @@ import '../../core/services/api_client.dart';
 import '../../core/theme/theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../services/share_service.dart';
+import '../../shared/widgets/mixed_card_metrics.dart';
 import '../../shared/widgets/vibe_filter_bar.dart';
 import '../home/recipe_list_view.dart';
 import '../home/widgets/dynamic_column.dart';
@@ -25,6 +25,7 @@ import '../recipes/services/recipe_service.dart';
 import 'providers/recipe_books_provider.dart';
 import 'services/recipe_book_service.dart';
 import 'services/recipe_book_sync_service.dart';
+import 'widgets/book_recipe_card.dart';
 import '../../core/services/error_reporter.dart';
 import '../../core/state/mutation_failure_copy.dart';
 import '../../core/state/mutation_snackbar.dart';
@@ -282,7 +283,7 @@ class _RecipeBookDetailScreenState
   }
 
   /// Build the mixed recipe + meal card list, sorted by `updated_at`
-  /// DESC. Recipe widgets are `_RecipeCard`; meals are `MealTile`.
+  /// DESC. Recipe widgets are `BookRecipeCard`; meals are `MealTile`.
   /// Vibe filter applies to recipes only — meals have no vibe field,
   /// so they are hidden when a filter is active.
   List<Widget> _buildMixedCards() {
@@ -311,7 +312,7 @@ class _RecipeBookDetailScreenState
         final recipeId = recipe['id']?.toString();
         final isSelected =
             recipeId != null && _selectedRecipeIds.contains(recipeId);
-        return _RecipeCard(
+        return BookRecipeCard(
           recipe: recipe,
           isSelectMode: _isSelectMode,
           isSelected: isSelected,
@@ -1321,14 +1322,25 @@ class _RecipeBookDetailScreenState
                                     ResponsiveUtils.recipeGridColumns(context);
                                 final cards = _buildMixedCards();
 
-                                if (columns == 1) {
-                                  return Column(children: cards);
-                                }
-                                return GridView.count(
-                                  crossAxisCount: columns,
-                                  crossAxisSpacing: 8,
-                                  mainAxisSpacing: 8,
-                                  childAspectRatio: 0.75,
+                                // rbv101: one layout for every column
+                                // count, with a fixed main-axis extent
+                                // so meals and recipes get identical
+                                // boxes. The old single-column branch
+                                // stacked cards in a plain `Column`,
+                                // which let each card pick its own
+                                // height, and the multi-column branch
+                                // used an aspect ratio, so the cell
+                                // height drifted with screen width.
+                                return GridView(
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: columns,
+                                    crossAxisSpacing: 8,
+                                    // Cards carry their own bottom
+                                    // margin, so no extra main-axis gap.
+                                    mainAxisSpacing: 0,
+                                    mainAxisExtent: kMixedCardExtent,
+                                  ),
                                   shrinkWrap: true,
                                   physics:
                                       const NeverScrollableScrollPhysics(),
@@ -1435,200 +1447,6 @@ class _BulkActionButton extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _RecipeCard extends StatelessWidget {
-  final dynamic recipe;
-  final VoidCallback onTap;
-  final VoidCallback? onLongPress;
-  final bool isSelectMode;
-  final bool isSelected;
-
-  const _RecipeCard({
-    required this.recipe,
-    required this.onTap,
-    this.onLongPress,
-    this.isSelectMode = false,
-    this.isSelected = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final imageUrl = recipe['image_url'] as String?;
-    final tags = (recipe['tags'] as List?)?.cast<String>() ?? [];
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      clipBehavior: Clip.antiAlias,
-      shape: isSelected
-          ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: colorScheme.primary, width: 2),
-            )
-          : null,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: Stack(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Hero image area (~60% of card)
-                SizedBox(
-                  height: 180,
-                  width: double.infinity,
-                  child: imageUrl != null
-                      ? CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            color: colorScheme.surfaceContainerHighest,
-                            child: const Center(
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            color: colorScheme.surfaceContainerHighest,
-                            child: Icon(
-                              Icons.restaurant,
-                              size: 48,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        )
-                      : Container(
-                          color: colorScheme.surfaceContainerHighest,
-                          child: Icon(
-                            Icons.restaurant,
-                            size: 48,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                ),
-
-                // Recipe info
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        recipe['name'] ?? 'Untitled',
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Metadata chips
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          if (recipe['prep_time'] != null)
-                            _MetadataChip(
-                              icon: Icons.timer_outlined,
-                              label: 'Prep ${recipe['prep_time']}m',
-                            ),
-                          if (recipe['cook_time'] != null)
-                            _MetadataChip(
-                              icon: Icons.local_fire_department_outlined,
-                              label: 'Cook ${recipe['cook_time']}m',
-                            ),
-                          if (recipe['servings'] != null)
-                            _MetadataChip(
-                              icon: Icons.people_outline,
-                              label: 'Serves ${recipe['servings']}',
-                            ),
-                        ],
-                      ),
-
-                      // Tags
-                      if (tags.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: tags
-                              .map((tag) => Chip(
-                                    label: Text(tag),
-                                    labelStyle: textTheme.labelSmall,
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    visualDensity: VisualDensity.compact,
-                                    backgroundColor:
-                                        colorScheme.surfaceContainerHighest,
-                                    padding: EdgeInsets.zero,
-                                  ))
-                              .toList(),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            // Selection checkbox overlay
-            if (isSelectMode)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? colorScheme.primary
-                        : colorScheme.surface.withValues(alpha: 0.8),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isSelected ? colorScheme.primary : colorScheme.outline,
-                      width: 2,
-                    ),
-                  ),
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(
-                    isSelected ? Icons.check : null,
-                    size: 18,
-                    color: isSelected ? colorScheme.onPrimary : Colors.transparent,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MetadataChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _MetadataChip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: colorScheme.outline),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: textTheme.bodySmall?.copyWith(
-            color: colorScheme.outline,
-          ),
-        ),
-      ],
     );
   }
 }

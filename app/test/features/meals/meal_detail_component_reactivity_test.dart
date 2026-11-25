@@ -75,7 +75,7 @@ Map<String, dynamic> _mealPayload({
       'id': id,
       'name': 'Weeknight Pasta',
       'recipe_book_id': 'book-1',
-      'created_at': '2026-04-18T10:00:00Z',
+      'created_at': '2026-04-18T10:00:00Z',  // age-independent — MealDetailScreen never reads createdAt
       'updated_at': '2026-04-18T10:00:00Z',
       'is_favorite': false,
       'components': components,

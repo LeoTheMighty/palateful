@@ -10,6 +10,7 @@ from typing import Any, Iterator
 from unittest.mock import MagicMock
 
 import pytest
+from utils.testing.red_registry import collect_ignore_for
 
 # Set test environment before any imports
 os.environ.setdefault("DATABASE_URL", "")
@@ -24,6 +25,13 @@ os.environ.setdefault("CELERY_BROKER_URL", "sqs://")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from fastapi.testclient import TestClient
+
+# rshred1 — registered RED artifacts (tests-first files whose
+# implementation has not landed) are dropped from default collection so
+# they don't hold the shared `test` gate red. Registry + policy:
+# `tools/red-artifacts.txt`. Opt back in with `PYTEST_RUN_RED=1`.
+# Assigned below the sys.path/env preamble so it stays E402-neutral.
+collect_ignore = collect_ignore_for(__file__)
 
 
 # Pre-warm the unit-alias cache so tests don't try to hit a real DB on
@@ -46,6 +54,24 @@ def _prewarm_unit_alias_cache_for_tests() -> None:
 
 
 _prewarm_unit_alias_cache_for_tests()
+
+
+# rsh102 (T2.6) — the health probe's verdict cache is process-global.
+# `/v1/health` is hit by the `client`/`async_client` examples below, by
+# `test_main.py` and by `test_async_client_fixture.py`, so a verdict that
+# leaks out of one test makes all of them order-dependent — and a leaked
+# `AUTH_FAILED` in particular turns an unrelated test's 200 into a 503.
+# Autouse and session-wide rather than opt-in: every test that reaches
+# the endpoint needs it, and the ones that do are exactly the ones least
+# likely to remember. Promoted here from the probe's own test module so
+# the protection covers the whole suite, not just that file.
+@pytest.fixture(autouse=True)
+def _reset_db_probe_verdict_cache():
+    from utils.services import db_probe
+
+    db_probe._reset_verdict_cache()
+    yield
+    db_probe._reset_verdict_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -777,9 +803,34 @@ class MockExecuteResult:
 # Helper to apply SQLAlchemy column defaults (simulating DB behavior)
 # ---------------------------------------------------------------------------
 
+def _model_has_id_column(obj) -> bool:
+    """True if this model actually maps an `id` column.
+
+    Join tables (`JoinsBase`) have composite primary keys and no `id`. A
+    non-mapped object (plain mock) is treated as having one, since that is
+    what the mocks rely on.
+    """
+    try:
+        from sqlalchemy import inspect as sa_inspect
+
+        return "id" in sa_inspect(type(obj)).columns
+    except Exception:
+        return True
+
+
 def _apply_column_defaults(obj):
-    """Apply SQLAlchemy column defaults to a model instance."""
-    if getattr(obj, 'id', None) is None:
+    """Apply SQLAlchemy column defaults to a model instance.
+
+    DO NOT reinstate an unconditional `obj.id = uuid4()` here. It invented an
+    `id` on models that have none — `getattr(obj, 'id', None)` returns None
+    for a missing attribute just as it does for a null column — so production
+    code reading `ri.id` on a join table passed every test and raised
+    AttributeError in prod. That shipped: manual recipe creation 500'd for
+    every user, and each retry left a partial recipe behind (recid500,
+    2026-09-24). `MockRecipeIngredient` below strips `id` for the same reason;
+    this function used to put it back.
+    """
+    if getattr(obj, 'id', None) is None and _model_has_id_column(obj):
         obj.id = str(uuid.uuid4())
     if getattr(obj, 'created_at', None) is None:
         obj.created_at = datetime.now(UTC)

@@ -79,6 +79,30 @@
 - [x] Gate: evals
 - [ ] Stage: Execute
   - [ ] Phase 1: Unblock the deploy path on `main` (FR-1) → rsh101
+    - [x] T1.1 Re-ran E-1's artifact and watched it fail NOW (3 failures,
+          right-reason) before touching code — not re-authored
+    - [x] T1.2 Four age-gated fixtures (`:277`, `:445`, `:518`, `:525`) →
+          `_recent(Duration)`; widget untouched, `:510` left hardcoded
+    - [x] T1.3 The masked `:543` + `:544` assertions now run and pass
+    - [x] T1.4 Guard: `app/test/fixture_date_guard_test.dart` + a 29-file
+          count baseline; lives inside `flutter-test` so it has real teeth.
+          Demonstrated failing on a live reintroduction, then green.
+    - [x] Local gates: `flutter test` 1536 passed / 0 failures (was 1524
+          with 3 failures); analyze clean on both touched files
+    - [x] PR #7 + review tour published
+    - [x] T1.5 Watched the `main` push (run 30312803900): `flutter-test`
+          **success**; `test` (pytest) **failure**; `deploy-web` and
+          `detect-changes` both **skipped**. AC #5 is 1-of-3.
+    - [ ] T1.6 **Blocked, not deferred** — AC #6 needs `deploy-web` to run,
+          and it skipped. Nothing reproduced or ruled out; versions not
+          pinned. Carries to the first `main` push after rshred1 lands.
+  - [ ] **Deploy lane still shut — blocker is `debug-rshred1`, not Phase 1.**
+        `deploy-web`/`detect-changes` need `test` as well as `flutter-test`
+        (`ci.yml:462`, `:521`). This workstream's own RED artifacts, merged at
+        `5a6174d`, fail pytest at collection
+        (`ModuleNotFoundError: utils.services.db_credentials`). Phase 1's Goal
+        assumed `flutter-test` was the only root gate; it is not.
+        rsh102 (deadline 2026-07-29) is blocked behind this.
   - [ ] Phase 2: Credential-aware health probe (FR-2) → rsh102
   - [ ] Phase 3: Rotation-redeploy Lambda handler (FR-4a) → rsh103
   - [ ] Phase 4: EventBridge rule + Lambda infrastructure (FR-4b) → rsh104

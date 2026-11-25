@@ -15,6 +15,7 @@
 #   - effective_cache_size         = 1500MB
 #   - log_min_duration_statement   = 100  (ms — every query >100ms hits
 #                                          the slow-query log)
+#   - log_connections              = 1    (logconn1, 2026-09-22 — see below)
 #
 # `apply_immediately=false` on the RDS instance means static params sit
 # on `pending-reboot` until the next maintenance window applies them.
@@ -66,6 +67,27 @@ resource "aws_db_parameter_group" "perf" {
   parameter {
     name         = "log_min_duration_statement"
     value        = "100"
+    apply_method = "immediate"
+  }
+
+  # logconn1: log every successful connection, so the rotation-self-heal
+  # health probe (rsh102) is observable in prod. The probe's whole claim
+  # is that it opens a FRESH connection each time — a pooled connection
+  # stays authenticated across an RDS-managed secret rotation and so
+  # cannot see one. Without this, RDS logs only failed connections, and
+  # there is no read-only way to confirm the deployed probe behaves as
+  # designed: with it, each probe shows up as a `connection authorized`
+  # line roughly every DB_PROBE_TTL_S (60s) per task, while pooled
+  # traffic produces almost none.
+  #
+  # DYNAMIC on postgres16 (ApplyType=dynamic, confirmed via
+  # describe-engine-default-parameters) — no reboot; affects new
+  # connections only. Logs user/database/host, never the password.
+  # Volume: two lines per connection ("received" + "authorized"); the
+  # probe adds ~2880 lines/day/task, pooled app traffic very few.
+  parameter {
+    name         = "log_connections"
+    value        = "1"
     apply_method = "immediate"
   }
 

@@ -34,7 +34,13 @@ enum ReceiveBranch {
 }
 
 /// Stage of the receiving UX lifecycle.
-enum ReceivePhase { detecting, uploading, navigating, error }
+///
+/// `sending` (sru-4) is the window between "S3 has the bytes" and "the
+/// backend acknowledged the job" — including the 409 `object_not_ready`
+/// retry handshake. It gets its own phase so the card can swap the
+/// determinate byte bar for an indeterminate spinner instead of parking
+/// at 100% for what can be several seconds.
+enum ReceivePhase { detecting, uploading, sending, navigating, error }
 
 /// All possible error codes surfaced on the receiving screen. Each maps
 /// to a distinct user-facing copy string per the epic's "machine-readable
@@ -273,6 +279,11 @@ class ReceiveImportNotifier extends ValueNotifier<ReceiveImportState> {
       uploadedBytes: uploaded,
       totalBytes: total ?? value.totalBytes,
     );
+  }
+
+  /// Bytes are in S3; we're now claiming them via `POST /import`.
+  void enterSending() {
+    value = value.copyWith(phase: ReceivePhase.sending);
   }
 
   void enterNavigating(String destination) {

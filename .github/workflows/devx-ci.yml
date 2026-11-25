@@ -40,7 +40,12 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
-      - run: npm test --silent
+      # `--if-present` matches the lint and coverage jobs below. Without it,
+      # `npm test` exits 1 on any repo whose package.json has no `test`
+      # script — which is every run of this workflow in palateful, including
+      # pushes to main, since the real suites are pytest + flutter test in
+      # ci.yml. See debug spec dvxci1.
+      - run: npm run test --if-present
 
   coverage:
     name: coverage

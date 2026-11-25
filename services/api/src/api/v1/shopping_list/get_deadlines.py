@@ -1,9 +1,9 @@
 """Get shopping list deadlines and urgency groupings endpoint."""
 
 from datetime import datetime
-from decimal import Decimal
 
 from pydantic import BaseModel
+from schemas.json_types import JsonDecimal
 from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
@@ -177,7 +177,7 @@ class GetShoppingListDeadlines(AsyncEndpoint):
     class ItemResponse(BaseModel):
         id: str
         name: str
-        quantity: Decimal | None = None
+        quantity: JsonDecimal | None = None
         unit: str | None = None
         category: str | None = None
         due_at: datetime | None = None

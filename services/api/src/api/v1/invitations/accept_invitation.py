@@ -105,8 +105,9 @@ class AcceptInvitation(AsyncEndpoint):
         display_name = (
             f"@{user.username}" if user.username else user.name or "Someone"
         )
-        # aam-8 hasn't landed — wrap the sync Firebase call in a
-        # threadpool so the event loop isn't blocked on FCM latency.
+        # Wrap the sync Firebase call in a threadpool so the event
+        # loop isn't blocked on FCM latency (equivalent to the aam-8
+        # `send_to_user_async` variant).
         # Fresh sync Database is created inside the push service when
         # `db_session` is omitted (can't share the async session across
         # the threadpool boundary).

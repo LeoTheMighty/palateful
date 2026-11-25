@@ -67,23 +67,32 @@ async def create_meal_event(
     scheduled_at: str,
     meal_type: str,
     recipe_id: str | None = None,
+    meal_id: str | None = None,
+    calendar_id: str | None = None,
     description: str | None = None,
 ) -> str:
     """Schedule a meal on the calendar. `scheduled_at` is an ISO 8601 datetime
     string (e.g., '2026-05-01T18:30:00'). `meal_type` must be
-    'breakfast', 'lunch', 'dinner', or 'snack'. Pair a `recipe_id` when
-    planning from an existing recipe.
+    'breakfast', 'lunch', 'dinner', or 'snack'. Pair a `recipe_id` or
+    `meal_id` (not both) when planning from an existing recipe or Meal.
+    `calendar_id` targets the calendar to write to.
     """
     if meal_type not in _VALID_MEAL_TYPES:
         raise ValueError(
             f"meal_type must be one of: {', '.join(sorted(_VALID_MEAL_TYPES))}"
         )
     scheduled_dt = _parse_iso_datetime(scheduled_at, "scheduled_at")
+    # No XOR check here on purpose: `CreateMealEvent` owns
+    # `validate_recipe_meal_xor` (calendar epic mcal-3) plus the
+    # `ck_meal_events_recipe_xor_meal` constraint. The tool passes both
+    # ids straight through so the 422 surfaces as one MCP error string.
     params = CreateMealEvent.Params(
         title=title,
         scheduled_at=scheduled_dt,
         meal_type=meal_type,
         recipe_id=recipe_id,
+        meal_id=meal_id,
+        calendar_id=calendar_id,
         description=description,
     )
     return await call_endpoint_async(CreateMealEvent, params=params)

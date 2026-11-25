@@ -4,6 +4,7 @@ import logging
 import traceback
 import uuid
 
+from fastapi.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -24,8 +25,10 @@ class ErrorTrackingMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except Exception as exc:
-            # Unhandled exception - log it and re-raise
-            self._log_error(
+            # Unhandled exception - log it and re-raise. The sync DB write
+            # runs on the threadpool so it never blocks the event loop.
+            await run_in_threadpool(
+                self._log_error,
                 request=request,
                 request_id=request_id,
                 error=exc,
@@ -35,7 +38,8 @@ class ErrorTrackingMiddleware(BaseHTTPMiddleware):
 
         # Check for 500-level responses
         if response.status_code >= 500:
-            self._log_error(
+            await run_in_threadpool(
+                self._log_error,
                 request=request,
                 request_id=request_id,
                 error=None,
@@ -51,7 +55,10 @@ class ErrorTrackingMiddleware(BaseHTTPMiddleware):
         error: Exception | None,
         status_code: int,
     ) -> None:
-        """Persist an error record using a fresh database session."""
+        """Persist an error record using a fresh database session.
+
+        Runs on the threadpool (never the event loop) — see dispatch.
+        """
         try:
             # Extract user_id from request state if available
             user_id = None
@@ -60,9 +67,22 @@ class ErrorTrackingMiddleware(BaseHTTPMiddleware):
 
             error_type = type(error).__name__ if error else "HTTP500"
             error_message = str(error) if error else f"Server returned {status_code}"
-            stack_trace = traceback.format_exc() if error else None
+            # Derive the trace from the exception object: sys.exc_info() is
+            # empty on the threadpool worker thread, so format_exc() would
+            # yield "NoneType: None" here.
+            stack_trace = (
+                "".join(traceback.format_exception(error)) if error else None
+            )
 
-            database = Database()
+            # aam-22: write on the dedicated error-log sub-pool (aam-3) so an
+            # error burst can never contend with the main sync pool. Falls
+            # back to the default engine when the sub-pool isn't wired.
+            from utils.services.database import ErrorLogSessionLocal
+
+            if ErrorLogSessionLocal is not None:
+                database = Database(db=ErrorLogSessionLocal())
+            else:
+                database = Database()
             try:
                 error_log = ErrorLog(
                     error_type=error_type,

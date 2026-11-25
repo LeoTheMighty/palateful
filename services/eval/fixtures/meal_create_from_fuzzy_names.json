@@ -1,0 +1,102 @@
+{
+  "id": "meal_create_from_fuzzy_names",
+  "epic_fixture": 2,
+  "story": "msa-4",
+  "title": "Fuzzy component name must be clarified before any write",
+  "description": "\"the kale one\" matches both Kale Salad and Kale Chips. Design Principle 6: read first, clarify second, write third. Turn 1 must produce zero write calls; the create_meal only lands after the user disambiguates in turn 2.",
+  "tags": [
+    "meals",
+    "mcp",
+    "create",
+    "ambiguity",
+    "zero-write"
+  ],
+  "context": {
+    "recipe_book_id": "b0000000-0000-4000-8000-000000000001",
+    "recipes": [
+      {
+        "id": "13000000-0000-4000-8000-000000000001",
+        "name": "Kale Salad"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000002",
+        "name": "Lemon Dressing"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000003",
+        "name": "Kale Chips"
+      }
+    ],
+    "meals": []
+  },
+  "turns": [
+    {
+      "user": "Bundle the kale one with my lemon dressing.",
+      "expected_tool_calls": [
+        {
+          "name": "list_recipes",
+          "arguments": {
+            "book_id": "b0000000-0000-4000-8000-000000000001",
+            "search": "kale"
+          },
+          "tool_result": {
+            "items": [
+              {
+                "id": "13000000-0000-4000-8000-000000000001",
+                "name": "Kale Salad"
+              },
+              {
+                "id": "13000000-0000-4000-8000-000000000003",
+                "name": "Kale Chips"
+              }
+            ]
+          }
+        }
+      ],
+      "expect_clarifying_question": true,
+      "expect_response_contains": [
+        "Kale Salad",
+        "Kale Chips"
+      ]
+    },
+    {
+      "user": "The salad.",
+      "expected_tool_calls": [
+        {
+          "name": "create_meal",
+          "arguments": {
+            "recipe_book_id": "b0000000-0000-4000-8000-000000000001",
+            "name": "Kale Salad + Lemon Dressing",
+            "component_recipe_ids": [
+              "13000000-0000-4000-8000-000000000001",
+              "13000000-0000-4000-8000-000000000002"
+            ]
+          },
+          "tool_result": {
+            "id": "ea000000-0000-4000-8000-000000000004",
+            "name": "Kale Salad + Lemon Dressing",
+            "component_count": 2
+          }
+        }
+      ],
+      "expect_clarifying_question": false,
+      "expect_response_contains": [
+        "palateful://meals/ea000000-0000-4000-8000-000000000004"
+      ]
+    }
+  ],
+  "assertions": {
+    "committed_write_calls": 1,
+    "blocked_write_calls": 0,
+    "required_tools": [
+      "list_recipes",
+      "create_meal"
+    ],
+    "forbidden_tools": [
+      "update_meal",
+      "add_recipe_to_meal",
+      "remove_recipe_from_meal",
+      "archive_meal"
+    ]
+  }
+}

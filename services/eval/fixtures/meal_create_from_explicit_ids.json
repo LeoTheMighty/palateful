@@ -1,0 +1,88 @@
+{
+  "id": "meal_create_from_explicit_ids",
+  "epic_fixture": 1,
+  "story": "msa-4",
+  "title": "Create a Meal from two unambiguous recipe names",
+  "description": "Both component names resolve to exactly one recipe each. The AI may read to resolve ids, then issues exactly one create_meal call carrying both component ids, and replies with the Meal deep link.",
+  "tags": [
+    "meals",
+    "mcp",
+    "create",
+    "happy-path"
+  ],
+  "context": {
+    "recipe_book_id": "b0000000-0000-4000-8000-000000000001",
+    "recipes": [
+      {
+        "id": "13000000-0000-4000-8000-000000000001",
+        "name": "Kale Salad"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000002",
+        "name": "Lemon Dressing"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000007",
+        "name": "Grilled Chicken"
+      }
+    ],
+    "meals": []
+  },
+  "turns": [
+    {
+      "user": "Make me a meal from my Lemon Dressing and Kale Salad — call it Summer Lunch.",
+      "expected_tool_calls": [
+        {
+          "name": "list_recipes",
+          "optional": true,
+          "arguments": {
+            "book_id": "b0000000-0000-4000-8000-000000000001",
+            "search": "salad"
+          },
+          "tool_result": {
+            "items": [
+              {
+                "id": "13000000-0000-4000-8000-000000000001",
+                "name": "Kale Salad"
+              }
+            ]
+          }
+        },
+        {
+          "name": "create_meal",
+          "arguments": {
+            "recipe_book_id": "b0000000-0000-4000-8000-000000000001",
+            "name": "Summer Lunch",
+            "component_recipe_ids": [
+              "13000000-0000-4000-8000-000000000002",
+              "13000000-0000-4000-8000-000000000001"
+            ]
+          },
+          "tool_result": {
+            "id": "ea000000-0000-4000-8000-000000000001",
+            "name": "Summer Lunch",
+            "component_count": 2
+          }
+        }
+      ],
+      "expect_clarifying_question": false,
+      "expect_response_contains": [
+        "Summer Lunch",
+        "palateful://meals/ea000000-0000-4000-8000-000000000001"
+      ]
+    }
+  ],
+  "assertions": {
+    "committed_write_calls": 1,
+    "blocked_write_calls": 0,
+    "required_tools": [
+      "create_meal"
+    ],
+    "forbidden_tools": [
+      "update_meal",
+      "add_recipe_to_meal",
+      "remove_recipe_from_meal",
+      "archive_meal"
+    ]
+  }
+}

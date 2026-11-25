@@ -6,19 +6,34 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/router/activity_routes.dart';
+import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/error_reporter.dart';
+import '../../../core/services/presigned_uploader.dart';
+import 'state/receive_import_notifier.dart';
+import 'state/receive_upload_coordinator.dart';
 
 /// Stand-alone screen for importing a local video clip. Mirrors the
 /// shape of `PdfImportScreen` — file picker + size cap + submit button.
-/// The actual presigned-upload sequence is owned by sru-4; this screen
-/// ships the wrapper (Add Recipe sheet can already reach it via
-/// `/recipes/add/video`), and sru-4 wires `_submit` to the upload path.
+/// Submits through the same presigned-upload sequence as the receiving
+/// screen (sru-4): `upload-url` → PUT → `/import {s3_key, etag}` with
+/// `source_type=video_file`.
 class VideoFileImportScreen extends StatefulWidget {
-  const VideoFileImportScreen({super.key, this.recipeBookId, this.initialPath});
+  const VideoFileImportScreen({
+    super.key,
+    this.recipeBookId,
+    this.initialPath,
+    this.uploader,
+  });
 
   final String? recipeBookId;
   final String? initialPath;
+
+  /// Injection seam for the presigned PUT, matching the receiving
+  /// screen's. Production leaves it null and the screen owns (and
+  /// aborts) a `DioPresignedUploader`.
+  @visibleForTesting
+  final PresignedUploader? uploader;
 
   @override
   State<VideoFileImportScreen> createState() => _VideoFileImportScreenState();
@@ -29,8 +44,24 @@ class _VideoFileImportScreenState extends State<VideoFileImportScreen> {
   bool _isImporting = false;
   String? _error;
 
+  /// Bytes handed to S3 so far, and the "claiming the object" stage that
+  /// follows the PUT. Both drive the submit-button area's copy.
+  int _uploadedBytes = 0;
+  bool _sending = false;
+
+  /// Owned here so `dispose()` aborts an in-flight PUT — same
+  /// half-uploaded-object guard the receiving screen has.
+  late final PresignedUploader _uploader =
+      widget.uploader ?? DioPresignedUploader();
+
   String get _bookId =>
       widget.recipeBookId ?? getIt<AuthService>().defaultRecipeBookId ?? '';
+
+  @override
+  void dispose() {
+    _uploader.abort();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -94,28 +125,76 @@ class _VideoFileImportScreenState extends State<VideoFileImportScreen> {
   }
 
   Future<void> _submit() async {
-    if (_selectedFile == null || _bookId.isEmpty) return;
+    final file = _selectedFile;
+    final path = file?.path;
+    if (file == null || _bookId.isEmpty) return;
+    if (path == null || path.isEmpty) {
+      // `withData: false` means we never hold the bytes ourselves — the
+      // uploader streams from disk, so a path-less pick can't proceed.
+      setState(() => _error = 'Could not read that video file.');
+      return;
+    }
+
     setState(() {
       _isImporting = true;
+      _sending = false;
+      _uploadedBytes = 0;
       _error = null;
     });
 
     try {
-      // sru-4 wires the presigned-upload sequence here. Until it lands,
-      // video imports from Add Recipe sheet surface an informative
-      // error so users aren't left holding a spinner.
-      throw UnimplementedError(
-        'Video upload is coming in the next release.',
+      await ReceiveUploadCoordinator(
+        api: getIt<ApiClient>(),
+        uploader: _uploader,
+      ).run(
+        bookId: _bookId,
+        branch: ReceiveBranch.video,
+        filePath: path,
+        filename: file.name,
+        sizeBytes: file.size,
+        onProgress: (sent, _) {
+          if (!mounted) return;
+          setState(() => _uploadedBytes = sent);
+        },
+        onUploaded: () {
+          if (!mounted) return;
+          setState(() => _sending = true);
+        },
       );
+      if (!mounted) return;
+      context.go(ActivityRoutes.hubPath);
+    } on UploadAbortedException {
+      // Screen is gone — nothing to render, nothing to report.
+      return;
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isImporting = false;
-        _error = (e is UnimplementedError)
-            ? e.message ?? 'Video upload is not available yet.'
+        _sending = false;
+        _error = e is ReceiveUploadFailure
+            ? _copyFor(e.code)
             : 'Import failed. Please try again.';
       });
       ErrorReporter.log('video_import_submit_failed: $e');
+    }
+  }
+
+  String _copyFor(ReceiveErrorCode code) {
+    switch (code) {
+      case ReceiveErrorCode.network:
+        return "Couldn't upload. Check your connection and try again.";
+      case ReceiveErrorCode.unauthorized:
+        return 'Your session expired. Sign in again to import.';
+      case ReceiveErrorCode.tooLarge:
+        return 'That file is too large. Max 100 MB.';
+      case ReceiveErrorCode.objectNotReady:
+        return 'Upload is still syncing. Try again in a moment.';
+      case ReceiveErrorCode.duplicate:
+        return 'This video has already been imported.';
+      case ReceiveErrorCode.rateLimited:
+        return 'Too many imports right now. Try again shortly.';
+      case ReceiveErrorCode.unknown:
+        return 'Import failed. Please try again.';
     }
   }
 
@@ -153,7 +232,11 @@ class _VideoFileImportScreenState extends State<VideoFileImportScreen> {
             ],
             const SizedBox(height: 24),
             if (_isImporting)
-              const Center(child: CircularProgressIndicator())
+              _UploadProgress(
+                sending: _sending,
+                uploadedBytes: _uploadedBytes,
+                totalBytes: _selectedFile?.size ?? 0,
+              )
             else
               FilledButton.icon(
                 onPressed: _selectedFile != null ? _submit : null,
@@ -182,6 +265,44 @@ class _VideoFileImportScreenState extends State<VideoFileImportScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Byte-level upload progress for the video submit path. A 100 MB clip
+/// on cellular takes long enough that a bare spinner reads as a hang.
+class _UploadProgress extends StatelessWidget {
+  const _UploadProgress({
+    required this.sending,
+    required this.uploadedBytes,
+    required this.totalBytes,
+  });
+
+  final bool sending;
+  final int uploadedBytes;
+  final int totalBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final determinate = !sending && totalBytes > 0;
+    final fraction = determinate
+        ? (uploadedBytes / totalBytes).clamp(0.0, 1.0)
+        : null;
+    return Column(
+      children: [
+        LinearProgressIndicator(value: fraction),
+        const SizedBox(height: 8),
+        Text(
+          sending
+              ? 'Sending to Palateful…'
+              : determinate
+                  ? 'Uploading… ${(fraction! * 100).round()}%'
+                  : 'Uploading…',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ],
     );
   }
 }

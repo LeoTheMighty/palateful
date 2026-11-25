@@ -92,9 +92,36 @@ NGROK_AUTHTOKEN=your-ngrok-authtoken
 
 1. Go to **Applications > Applications** → **Create Application**
 2. Name: "Palateful Mobile", Type: **Native**
-3. In Settings, set:
-   - **Allowed Callback URLs**: `com.palateful.app://login-callback`
-   - **Allowed Logout URLs**: `com.palateful.app://logout-callback`
+3. In Settings → Application URIs, set **both** lists to the same two URLs.
+   The app never hand-builds these — `auth0_flutter`'s native SDKs derive
+   them, and they use the *same* string for the login callback and the
+   logout `returnTo`, so the two lists are identical:
+
+   | Platform | URL |
+   |---|---|
+   | iOS | `com.palateful.palateful://auth.palateful.app/ios/com.palateful.palateful/callback` |
+   | Android | `com.palateful.app://auth.palateful.app/android/com.palateful.palateful/callback` |
+
+   - **Allowed Callback URLs**: both rows, comma-separated
+   - **Allowed Logout URLs**: both rows, comma-separated
+
+   The shape is `<scheme>://<AUTH0_DOMAIN>/<platform>/<bundle id or
+   applicationId>/callback`. Two traps, both of which have bitten us:
+
+   - The **scheme** differs per platform. On Android it is the custom
+     scheme (`Environment.auth0Scheme` = `com.palateful.app`). On iOS the
+     `scheme:` argument is ignored entirely and Auth0.swift uses the
+     **bundle identifier** as the scheme
+     (`app/ios/Pods/Auth0/Auth0/Auth0WebAuth.swift`, `redirectURL`).
+   - The **path segment** is always the bundle id / applicationId
+     (`com.palateful.palateful`), never the custom scheme. Shipping
+     `.../ios/com.palateful.app/callback` gets the request rejected and
+     parks the browser on an Auth0-hosted error page — see
+     `debug/debug-lgort1-2026-07-27T17:41-auth0-logout-returnto-malformed.md`.
+
+   The strings are pinned in `app/test/core/config/auth0_urls_test.dart`; if
+   `AUTH0_DOMAIN`, the bundle id, or `Environment.auth0Scheme` changes, that
+   test and these lists move together.
 4. Note the **Domain**, **Client ID** — you'll need these for the Flutter app
 
 ## Step 4: Start All Backend Services

@@ -117,7 +117,7 @@ Map<String, dynamic> _mealPayload({String id = 'meal-1'}) => {
       'id': id,
       'name': 'Kale Salad Meal',
       'recipe_book_id': 'book-1',
-      'created_at': '2026-04-18T10:00:00Z',
+      'created_at': '2026-04-18T10:00:00Z',  // age-independent — parsed into Meal; no widget in this file
       'updated_at': '2026-04-18T10:00:00Z',
       'components': [
         {
@@ -252,6 +252,66 @@ void main() {
           isA<MealComponentUnavailableException>()
               .having((e) => e.recipeIds, 'recipeIds', ['r1', 'r2']),
         ),
+      );
+    });
+
+    // btri01: the shape the server actually emits. `CreateMeal` /
+    // `AddRecipeToMeal` raise 404 + MEAL_COMPONENT_UNREADABLE (302), not
+    // the 422/306 mcv-5 was written against — so before this the
+    // unreadable-component case fell through as a raw DioException and
+    // `CreateMealSheet`'s per-row Remove affordance never rendered.
+    test('404 MEAL_COMPONENT_UNREADABLE → typed with ids (create)', () async {
+      api.stubError(
+        'createMealInBook',
+        _err(
+          status: 404,
+          errorCode: 302,
+          data: {'recipe_ids': ['r2']},
+        ),
+      );
+      expect(
+        () => service.createMeal(
+          bookId: 'b',
+          name: 'X',
+          componentRecipeIds: ['r1', 'r2'],
+        ),
+        throwsA(
+          isA<MealComponentUnavailableException>()
+              .having((e) => e.recipeIds, 'recipeIds', ['r2']),
+        ),
+      );
+    });
+
+    test('404 MEAL_COMPONENT_UNREADABLE → typed (add component)', () async {
+      api.stubError(
+        'addRecipeToMeal',
+        _err(
+          status: 404,
+          errorCode: 302,
+          data: {'recipe_ids': ['r3']},
+        ),
+      );
+      expect(
+        () => service.addRecipeToMeal('m', recipeId: 'r3'),
+        throwsA(
+          isA<MealComponentUnavailableException>()
+              .having((e) => e.recipeIds, 'recipeIds', ['r3']),
+        ),
+      );
+    });
+
+    test('404 without a meal error_code stays a DioException', () async {
+      api.stubError(
+        'createMealInBook',
+        _err(status: 404, errorCode: 1),
+      );
+      expect(
+        () => service.createMeal(
+          bookId: 'b',
+          name: 'X',
+          componentRecipeIds: ['r1', 'r2'],
+        ),
+        throwsA(isA<DioException>()),
       );
     });
 

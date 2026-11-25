@@ -21,7 +21,7 @@ FR-8, explicitly last (PRD precondition: only after bqa106's end-to-end pass). A
 ## Technical notes
 - Cross-repo (skill change upstream in `~/personal/devx`, direct to its main) + attended pass here.
 - 5 persona files exist in `focus-group/personas/`; the pass reuses the bqa106 protocol unchanged — persona only varies priorities and tone. The per-day cap ($1/day) applies across persona and plain passes alike.
-- Full context: plan `_devx/workstreams/browser-qa-agent/plan.md` §Phase 7.
+- Full context: plan `_devx/workstreams/browser-qa-agent/plan/agent.md` §Phase 7.
 
 ## Status log
 - 2026-07-27T11:45 — emitted from plan 41ee13 at RED-gate PASS (human-validation phase; E-6 pass record filled here).

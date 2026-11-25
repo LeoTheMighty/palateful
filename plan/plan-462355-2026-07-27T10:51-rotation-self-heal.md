@@ -171,3 +171,4 @@ Workstream 'Rotation Self Heal' — PRD stage next. Artifacts live in `_devx/wor
   shape and the two Force-Deploy-only phases called out. No PLAN.md checkbox to
   flip — this workstream was created by `devx workstream new`, not from a
   PLAN.md row.
+- 2026-09-22 — workstream artifacts moved to the folder-per-artifact layout (`_devx/workstreams/rotation-self-heal/{prd,design,plan}.md` → `…/{prd,design,plan}/agent.md`) by `devx doctor`'s content-safe repair. Paths in earlier lines of this log are historical.

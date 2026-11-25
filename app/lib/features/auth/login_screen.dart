@@ -4,6 +4,13 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/auth_failure_mode.dart';
+import '../../core/services/error_reporter.dart';
+
+/// Re-exported from `core/services/auth_failure_mode.dart`, where it lives
+/// so `AuthService` can tag reports with the same classification the screen
+/// shows copy for. Kept here for existing call sites and tests.
+export '../../core/services/auth_failure_mode.dart' show isAccountLinkedError;
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -40,8 +47,21 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
 
+    // Set when the failure came out of `login()`, which reports it itself.
+    // `rethrow` preserves the stack, so reporting it again here would land
+    // in the SAME Crashlytics issue (non-fatals group by stack; `operation`
+    // is a custom key, not a grouping dimension) — one login failure
+    // counted twice, not two distinguishable events.
+    var reportedByAuthService = false;
+
     try {
-      final success = await _authService.login(connection: connection);
+      final bool success;
+      try {
+        success = await _authService.login(connection: connection);
+      } catch (_) {
+        reportedByAuthService = true;
+        rethrow;
+      }
 
       if (kIsWeb) {
         // Keep loading - page will redirect
@@ -61,22 +81,37 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _isLoading = false);
         context.go('/');
       } else {
-        setState(() {
-          _error = 'Login failed. Please try again.';
-          _isLoading = false;
-        });
+        // `login()` returns false only when the user dismissed the sign-in
+        // sheet. That's their choice, not a failure — no error message.
+        setState(() => _isLoading = false);
       }
-    } catch (e) {
+    } catch (e, st) {
+      // Reported BEFORE the mounted check: a user who backgrounds the app
+      // or navigates away mid-hand-off still had the failure, and dropping
+      // it here would be the same silent path this story exists to close.
+      // Only the setState below needs a live element.
+      if (!reportedByAuthService) {
+        // The post-login steps only: the ApiClient token hand-off and
+        // anything `_fetchUserAndCheckOnboarding` lets escape. `login()`'s
+        // own failures are already reported at their own stack.
+        ErrorReporter.reportPreAuth(e, st,
+            area: 'auth',
+            operation: 'loginScreen.postLogin',
+            extras: {
+              'failureMode': authFailureMode(e),
+              'connection': connection ?? 'universal',
+            });
+      }
       if (!mounted) return;
-
-      final errorMsg = e.toString().toLowerCase();
-      final isAccountLinked = errorMsg.contains('account has been linked') ||
-          errorMsg.contains('accounts have been linked');
-
+      // Reachable since login() stopped swallowing. The account-linked branch
+      // is the case our Auth0 Action produces on purpose (`api.access.deny()`
+      // after linking a second provider on the same email): the next sign-in
+      // succeeds, so say so rather than calling it a failure.
       setState(() {
-        _error = isAccountLinked
-            ? 'Your accounts have been linked! Please sign in again.'
-            : 'An error occurred: $e';
+        _error =
+            isAccountLinkedError(e)
+                ? 'Your accounts have been linked! Please sign in again.'
+                : 'Login failed. Please try again.';
         _isLoading = false;
       });
     }
@@ -92,8 +127,14 @@ class _LoginScreenState extends State<LoginScreen> {
           defaultRecipeBookId: userData['default_recipe_book_id'],
         );
       }
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('Failed to fetch user data: $e');
+      // NOT pre-auth: this runs with a token already set on the ApiClient,
+      // so the error_logs mirror can accept it and `audit_errors.py` can see
+      // it next to the server side of the same request. Swallowed by design
+      // — onboarding state is refetched on the next screen — but a rising
+      // count here is a signed-in user landing on a half-initialised app.
+      ErrorReporter.report(e, st, area: 'auth', operation: 'fetchUserAfterLogin');
     }
   }
 
@@ -119,7 +160,14 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       context.go('/');
-    } catch (e) {
+    } catch (e, st) {
+      // Manual-token sign-in (dev/E2E affordance). `_fetchUserAndCheckOnboarding`
+      // swallows and reports its own failures, so what reaches here is the
+      // token hand-off or the navigation. Pre-auth: the pasted token is the
+      // one under test and nothing else can authenticate a mirror POST.
+      ErrorReporter.reportPreAuth(e, st, area: 'auth', operation: 'loginScreen.tokenSignIn', extras: {
+        'failureMode': authFailureMode(e),
+      });
       if (mounted) {
         setState(() {
           _error = 'An error occurred: $e';
@@ -237,20 +285,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 8),
 
-                // Dev token input toggle
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _showTokenInput = true;
-                    });
-                  },
-                  child: Text(
-                    'Use access token instead (for testing)',
-                    style: textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+                // Dev token input toggle. Debug builds only: it was shipping
+                // to prod, where a user sees "for testing" on the sign-in
+                // screen. `flutter test` runs in debug, so widget tests keep it.
+                if (kDebugMode)
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _showTokenInput = true;
+                      });
+                    },
+                    child: Text(
+                      'Use access token instead (for testing)',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                ),
               ],
               if (_showTokenInput) ...[
                 Text(

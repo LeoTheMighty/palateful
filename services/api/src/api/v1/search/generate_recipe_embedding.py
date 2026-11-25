@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def generate_recipe_embedding(
+async def generate_recipe_embedding(
     recipe_name: str,
     description: str | None,
     tags: list[str] | None,
@@ -22,10 +22,10 @@ def generate_recipe_embedding(
     vibe_text = f" Vibe: {primary_vibe}" if primary_vibe else ""
     input_text = f"{recipe_name}. {description or ''}. Tags: {', '.join(tags or [])}{vibe_text}"
     try:
-        from openai import OpenAI
+        from openai import AsyncOpenAI
 
-        client = OpenAI()  # reads OPENAI_API_KEY from env
-        resp = client.embeddings.create(
+        client = AsyncOpenAI()  # reads OPENAI_API_KEY from env
+        resp = await client.embeddings.create(
             model="text-embedding-3-small",
             input=input_text,
             dimensions=384,
@@ -35,7 +35,7 @@ def generate_recipe_embedding(
         return None
 
 
-def assign_vibes_for_recipe(
+async def assign_vibes_for_recipe(
     recipe_name: str,
     description: str | None,
     ingredients_text: str | None = None,
@@ -54,10 +54,10 @@ def assign_vibes_for_recipe(
         prompt_text += f". Ingredients: {ingredients_text}"
 
     try:
-        from openai import OpenAI
+        from openai import AsyncOpenAI
 
-        client = OpenAI()
-        resp = client.chat.completions.create(
+        client = AsyncOpenAI()
+        resp = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {

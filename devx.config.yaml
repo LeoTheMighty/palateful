@@ -123,10 +123,19 @@ projects:
     path: _devx/workstreams
     test: bash run-eval.sh # dispatcher: no args → skip 0; one arg → exec bash "$1"
 qa:
-  browser_harness: playwright
+  # browser-qa-agent Phase 1 (bqa101): interim-truthful values. The previous
+  # pair named a browser driver installed nowhere in this repo.
+  # `browser_harness` is the constrained upstream enum, so `none` is the
+  # honest legal value until bqa103 extends that enum; the final driver value
+  # lands here in bqa105. `scripted_test_runner` is a free string, and
+  # flutter drive is what the gen-2 e2e harness actually invokes
+  # (services/e2e/scripts/run_all.sh:62).
+  # E-1 asserts by grep that this file names no uninstalled driver — keep
+  # driver names out of prose here, in either direction.
+  browser_harness: none
   layer_2_cadence: on-demand
   layer_2_personas: 4
-  scripted_test_runner: playwright
+  scripted_test_runner: flutter-drive
 focus_group:
   panel_size: 5
   consult_at: []

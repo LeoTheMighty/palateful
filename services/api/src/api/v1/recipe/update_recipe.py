@@ -161,7 +161,7 @@ class UpdateRecipe(AsyncEndpoint):
             )
             if content_changed:
                 from api.v1.search.generate_recipe_embedding import generate_recipe_embedding
-                embedding = generate_recipe_embedding(recipe.name, recipe.description, recipe.tags, recipe.primary_vibe)
+                embedding = await generate_recipe_embedding(recipe.name, recipe.description, recipe.tags, recipe.primary_vibe)
                 if embedding is not None:
                     recipe.embedding = embedding
                     await self.database.db.commit()

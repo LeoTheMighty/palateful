@@ -39,9 +39,16 @@ if [ ! -d "$DSYM_DIR" ]; then
   exit 0
 fi
 
+# tfship1 (2026-09-20): downgraded from `exit 1`. Crashlytics symbolication
+# is a debugging convenience; failing an otherwise clean release archive over
+# it trades a shipped build for nicer stack traces. It also masks whatever
+# else a run was meant to reveal, which is exactly why it was changed ahead
+# of the deliberate Xcode Cloud trigger. Missing symbols degrade crash
+# reports; they do not make the build unshippable.
 if [ ! -x "$UPLOAD_SYMBOLS" ]; then
-  echo "--- ci_post_xcodebuild: upload-symbols not found at $UPLOAD_SYMBOLS ---"
-  exit 1
+  echo "--- ci_post_xcodebuild: WARNING — upload-symbols not found at $UPLOAD_SYMBOLS ---" >&2
+  echo "--- Archive is fine; Crashlytics crashes from this build will be unsymbolicated. ---" >&2
+  exit 0
 fi
 
 echo "--- ci_post_xcodebuild: uploading dSYMs to Crashlytics ---"

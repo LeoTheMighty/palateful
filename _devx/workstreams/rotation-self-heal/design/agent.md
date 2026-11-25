@@ -497,7 +497,7 @@ and no second on-demand surface to keep in sync with the workflow.
 
 | Symbol | Signature | Behavior |
 |---|---|---|
-| `ProbeVerdict` | enum | `OK` \| `AUTH_FAILED` \| `OTHER_ERROR` |
+| `ProbeVerdict` | enum | `OK` \| `AUTH_FAILED` \| `UNREACHABLE` \| `UNKNOWN` \| `NOT_CONFIGURED` (as built: rsh102 split `OTHER_ERROR`, selfheal1 added `NOT_CONFIGURED`) |
 | `probe_async` | `() -> ProbeVerdict` | Fresh `NullPool` connection, `SELECT 1` |
 | `probe_sync` | `() -> ProbeVerdict` | Same, sync driver, for the worker CLI |
 | `cached_verdict_async` | `(ttl_s: int = 60) -> ProbeVerdict` | Serves cached verdict inside the window |

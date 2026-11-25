@@ -1,6 +1,6 @@
 """Tests for ErrorTrackingMiddleware."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -27,7 +27,7 @@ def _build_request(user=None):
 
 
 class TestLogError:
-    """Direct tests for _log_error covering line 59 (user_id extraction)."""
+    """Direct tests for _log_error (user_id extraction, error/no-error paths)."""
 
     @patch("middleware.error_tracking.Database")
     def test_log_error_with_user_on_request_state(
@@ -96,7 +96,7 @@ class TestLogError:
 
 
 class TestDispatchExceptionPath:
-    """Cover lines 26-34: call_next raises → middleware logs + re-raises."""
+    """call_next raises → middleware logs + re-raises."""
 
     @pytest.mark.asyncio
     @patch("middleware.error_tracking.Database")
@@ -122,7 +122,7 @@ class TestDispatchExceptionPath:
 
 
 class TestDispatch500ResponsePath:
-    """Cover lines 37-43: 5xx response is logged."""
+    """5xx response is logged."""
 
     @pytest.mark.asyncio
     @patch("middleware.error_tracking.Database")
@@ -142,3 +142,105 @@ class TestDispatch500ResponsePath:
         result = await middleware.dispatch(request, call_next)
         assert result is response
         mock_db.create.assert_called_once()
+
+
+class TestThreadpoolDispatch:
+    """aam-22: both dispatch paths hand the sync write to run_in_threadpool."""
+
+    @pytest.mark.asyncio
+    async def test_exception_path_uses_threadpool(self, middleware):
+        request = _build_request(user=None)
+
+        async def call_next(_req):
+            raise ValueError("kaboom")
+
+        with patch(
+            "middleware.error_tracking.run_in_threadpool", new_callable=AsyncMock
+        ) as mock_rtp:
+            with pytest.raises(ValueError, match="kaboom"):
+                await middleware.dispatch(request, call_next)
+
+        mock_rtp.assert_awaited_once()
+        assert mock_rtp.await_args.args[0] == middleware._log_error
+        assert mock_rtp.await_args.kwargs["status_code"] == 500
+        assert isinstance(mock_rtp.await_args.kwargs["error"], ValueError)
+
+    @pytest.mark.asyncio
+    async def test_500_response_path_uses_threadpool(self, middleware):
+        request = _build_request(user=None)
+        response = MagicMock()
+        response.status_code = 503
+
+        async def call_next(_req):
+            return response
+
+        with patch(
+            "middleware.error_tracking.run_in_threadpool", new_callable=AsyncMock
+        ) as mock_rtp:
+            result = await middleware.dispatch(request, call_next)
+
+        assert result is response
+        mock_rtp.assert_awaited_once()
+        assert mock_rtp.await_args.args[0] == middleware._log_error
+        assert mock_rtp.await_args.kwargs["status_code"] == 503
+        assert mock_rtp.await_args.kwargs["error"] is None
+
+
+class TestErrorLogSubPool:
+    """aam-22: the write lands on the aam-3 error-log sub-pool, never the main pool."""
+
+    @patch("middleware.error_tracking.Database")
+    @patch("utils.services.database.ErrorLogSessionLocal")
+    def test_uses_error_log_session(
+        self, mock_session_local, mock_database_cls, middleware
+    ):
+        session = MagicMock()
+        mock_session_local.return_value = session
+        mock_database_cls.return_value = MagicMock()
+
+        middleware._log_error(
+            request=_build_request(user=None),
+            request_id="req-1",
+            error=ValueError("boom"),
+            status_code=500,
+        )
+
+        mock_database_cls.assert_called_once_with(db=session)
+
+    @patch("middleware.error_tracking.Database")
+    def test_falls_back_to_default_pool_when_subpool_missing(
+        self, mock_database_cls, middleware
+    ):
+        mock_database_cls.return_value = MagicMock()
+
+        with patch("utils.services.database.ErrorLogSessionLocal", None):
+            middleware._log_error(
+                request=_build_request(user=None),
+                request_id="req-1",
+                error=None,
+                status_code=500,
+            )
+
+        mock_database_cls.assert_called_once_with()
+
+    @patch("utils.services.database.SessionLocal")
+    @patch("utils.services.database.ErrorLogSessionLocal")
+    def test_no_main_pool_checkout_during_write(
+        self, mock_error_session_local, mock_main_session_local, middleware
+    ):
+        """Real Database + mocked session factories: the main-pool factory
+        is never invoked during an error-log write."""
+        session = MagicMock()
+        mock_error_session_local.return_value = session
+
+        middleware._log_error(
+            request=_build_request(user=None),
+            request_id="req-1",
+            error=ValueError("boom"),
+            status_code=500,
+        )
+
+        mock_main_session_local.assert_not_called()
+        session.add.assert_called_once()
+        session.commit.assert_called_once()
+        session.close.assert_called_once()

@@ -7,25 +7,35 @@ import pytest
 
 
 class _FakeEndpoint:
-    """Minimal Endpoint-like class usable without going through Endpoint.run()."""
+    """Minimal Endpoint-like class usable without going through Endpoint.run().
 
-    def __init__(self, database=None, user=None):
+    Mirrors the real `Endpoint` calling convention: endpoint args land on
+    the constructor and `run()` takes no arguments.
+    """
+
+    def __init__(self, *args, database=None, user=None, **kwargs):
         self.database = database
         self.user = user
+        self.args = args
+        self.kwargs = kwargs
 
-    def run(self, *args, **kwargs):
+    def run(self):
         return {
             "success": True,
-            "data": {"seen_user": str(self.user.id), "args": list(args), "kwargs": kwargs},
+            "data": {
+                "seen_user": str(self.user.id),
+                "args": list(self.args),
+                "kwargs": self.kwargs,
+            },
             "status": 200,
         }
 
 
 class _FailingEndpoint:
-    def __init__(self, database=None, user=None):
+    def __init__(self, *args, database=None, user=None, **kwargs):
         pass
 
-    def run(self, *args, **kwargs):
+    def run(self):
         return {
             "success": False,
             "error_message": "boom",
@@ -34,10 +44,10 @@ class _FailingEndpoint:
 
 
 class _RaisingEndpoint:
-    def __init__(self, database=None, user=None):
+    def __init__(self, *args, database=None, user=None, **kwargs):
         pass
 
-    def run(self, *args, **kwargs):
+    def run(self):
         raise RuntimeError("oops")
 
 
@@ -98,32 +108,42 @@ class TestCallEndpoint:
 
 
 class _FakeAsyncEndpoint:
-    """Minimal AsyncEndpoint-like class — async run() returning valid shape."""
+    """Minimal AsyncEndpoint-like class — async run() returning valid shape.
 
-    def __init__(self, database=None, user=None):
+    Same convention as `_FakeEndpoint`: args on the constructor, no-arg
+    `run()`.
+    """
+
+    def __init__(self, *args, database=None, user=None, **kwargs):
         self.user = user
+        self.args = args
+        self.kwargs = kwargs
 
-    async def run(self, *args, **kwargs):
+    async def run(self):
         return {
             "success": True,
-            "data": {"seen_user": str(self.user.id)},
+            "data": {
+                "seen_user": str(self.user.id),
+                "args": list(self.args),
+                "kwargs": self.kwargs,
+            },
             "status": 200,
         }
 
 
 class _FailingAsyncEndpoint:
-    def __init__(self, database=None, user=None):
+    def __init__(self, *args, database=None, user=None, **kwargs):
         pass
 
-    async def run(self, *args, **kwargs):
+    async def run(self):
         return {"success": False, "error_message": "async boom", "status": 500}
 
 
 class _RaisingAsyncEndpoint:
-    def __init__(self, database=None, user=None):
+    def __init__(self, *args, database=None, user=None, **kwargs):
         pass
 
-    async def run(self, *args, **kwargs):
+    async def run(self):
         raise RuntimeError("async oops")
 
 
@@ -156,6 +176,37 @@ class TestCallEndpointAsync:
 
         parsed = json.loads(result)
         assert parsed["seen_user"] == "u1"
+
+    async def test_endpoint_args_land_on_the_constructor(self):
+        """Regression: endpoint args must be forwarded to `__init__`, not to
+        `run()`. Real `AsyncEndpoint.run()` takes no arguments, so passing
+        them there made every tool call fail with a TypeError swallowed
+        into an `Error: ...` string.
+        """
+        from mcp_server.auth import (
+            current_database,
+            current_database_async,
+            current_user,
+        )
+        from mcp_server.server import call_endpoint_async
+
+        user = MagicMock()
+        user.id = "u1"
+        utok = current_user.set(user)
+        dtok = current_database.set(MagicMock())
+        adtok = current_database_async.set(MagicMock())
+        try:
+            result = await call_endpoint_async(
+                _FakeAsyncEndpoint, "pos", event_id="evt-1"
+            )
+        finally:
+            current_user.reset(utok)
+            current_database.reset(dtok)
+            current_database_async.reset(adtok)
+
+        parsed = json.loads(result)
+        assert parsed["args"] == ["pos"]
+        assert parsed["kwargs"] == {"event_id": "evt-1"}
 
     async def test_failure_returns_error_message(self):
         from mcp_server.auth import (

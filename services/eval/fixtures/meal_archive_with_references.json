@@ -1,0 +1,126 @@
+{
+  "id": "meal_archive_with_references",
+  "epic_fixture": 6,
+  "story": "msa-4",
+  "title": "Archiving a referenced Meal requires an explicit confirmed=True second call",
+  "description": "The Meal has an upcoming meal_event and an active recurrence rule, so the first archive_meal call comes back CONFIRMATION_REQUIRED with the reference list. The AI must surface that list rather than immediately retrying with confirmed=True; only the user's explicit yes unlocks the committing call.",
+  "tags": [
+    "meals",
+    "mcp",
+    "archive",
+    "confirmation-policy"
+  ],
+  "context": {
+    "recipe_book_id": "b0000000-0000-4000-8000-000000000001",
+    "recipes": [
+      {
+        "id": "13000000-0000-4000-8000-000000000001",
+        "name": "Kale Salad"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000002",
+        "name": "Lemon Dressing"
+      }
+    ],
+    "meals": [
+      {
+        "id": "ea000000-0000-4000-8000-000000000002",
+        "name": "Kale Salad Meal",
+        "component_recipe_ids": [
+          "13000000-0000-4000-8000-000000000001",
+          "13000000-0000-4000-8000-000000000002"
+        ]
+      }
+    ],
+    "calendar_id": "ca000000-0000-4000-8000-000000000001",
+    "meal_events": [
+      {
+        "id": "e0000000-0000-4000-8000-000000000001",
+        "meal_id": "ea000000-0000-4000-8000-000000000002",
+        "title": "Kale Salad Meal",
+        "scheduled_at": "2026-08-10T18:00:00Z",
+        "meal_type": "dinner"
+      }
+    ],
+    "recurrence_rules": [
+      {
+        "id": "ec000000-0000-4000-8000-000000000001",
+        "meal_id": "ea000000-0000-4000-8000-000000000002",
+        "rrule": "FREQ=WEEKLY;BYDAY=MO",
+        "meal_type": "dinner"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "user": "Delete the Kale Salad Meal.",
+      "expected_tool_calls": [
+        {
+          "name": "archive_meal",
+          "arguments": {
+            "meal_id": "ea000000-0000-4000-8000-000000000002"
+          },
+          "tool_result": {
+            "success": false,
+            "error": "CONFIRMATION_REQUIRED",
+            "reason": "Meal \"Kale Salad Meal\" has 1 upcoming event(s) and 1 active recurrence rule(s). Call archive_meal again with confirmed=True to proceed.",
+            "events": [
+              {
+                "id": "e0000000-0000-4000-8000-000000000001",
+                "title": "Kale Salad Meal",
+                "scheduled_at": "2026-08-10T18:00:00Z",
+                "meal_type": "dinner"
+              }
+            ],
+            "rules": [
+              {
+                "id": "ec000000-0000-4000-8000-000000000001",
+                "rrule": "FREQ=WEEKLY;BYDAY=MO",
+                "meal_type": "dinner"
+              }
+            ]
+          }
+        }
+      ],
+      "expect_clarifying_question": true,
+      "expect_response_contains": [
+        "upcoming",
+        "recurrence",
+        "2026-08-10"
+      ]
+    },
+    {
+      "user": "Yes, delete it anyway.",
+      "expected_tool_calls": [
+        {
+          "name": "archive_meal",
+          "arguments": {
+            "meal_id": "ea000000-0000-4000-8000-000000000002",
+            "confirmed": true
+          },
+          "tool_result": {
+            "id": "ea000000-0000-4000-8000-000000000002",
+            "archived_at": "2026-08-03T12:00:00Z"
+          }
+        }
+      ],
+      "expect_clarifying_question": false,
+      "expect_response_contains": [
+        "Kale Salad Meal"
+      ]
+    }
+  ],
+  "assertions": {
+    "committed_write_calls": 1,
+    "blocked_write_calls": 1,
+    "required_tools": [
+      "archive_meal"
+    ],
+    "forbidden_tools": [
+      "create_meal",
+      "update_meal",
+      "add_recipe_to_meal",
+      "remove_recipe_from_meal"
+    ]
+  }
+}

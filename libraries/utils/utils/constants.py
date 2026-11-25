@@ -122,6 +122,44 @@ DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "40"))
 # sync(20) + async(20) + beat/worker/migrator(~15) + headroom.
 DB_ASYNC_POOL_SIZE = int(os.environ.get("DB_ASYNC_POOL_SIZE", "20"))
 DB_ASYNC_MAX_OVERFLOW = int(os.environ.get("DB_ASYNC_MAX_OVERFLOW", "40"))
+# rsh102: how long `/v1/health` may reuse a probe verdict before opening
+# another fresh connection. The container health check fires every 30s
+# and the ALB every 60s, and post-FR-5 each fresh connection also costs a
+# `get_secret_value` — so the default caps the pair at one connection per
+# minute. Lower it to shorten the detection window after a rotation at
+# the cost of more connects; `db_probe` reads it per-call, so it is
+# adjustable without a redeploy of the constant.
+def _probe_ttl_seconds() -> float:
+    """Parse DB_PROBE_TTL_S defensively.
+
+    `utils.constants` is imported by api, worker, migrator and parser, so
+    a bare `float(...)` here means a typo in a knob documented as
+    "adjustable without a redeploy" takes every service down at import —
+    before `db_probe._ttl_default`, which handles this correctly, can
+    ever run. Anything unusable falls back to the default and says so.
+    """
+    raw = os.environ.get("DB_PROBE_TTL_S")
+    if not raw:
+        return 60.0
+    try:
+        value = float(raw)
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            "DB_PROBE_TTL_S=%r is not a number; using 60s", raw
+        )
+        return 60.0
+    # inf never expires the cache (a rotation is never detected); nan
+    # never hits it (a fresh connection per request). Both are worse than
+    # the default, and neither looks like a mistake in a dashboard.
+    if value != value or value in (float("inf"), float("-inf")) or value < 0:
+        logging.getLogger(__name__).warning(
+            "DB_PROBE_TTL_S=%r is out of range; using 60s", raw
+        )
+        return 60.0
+    return value
+
+
+DB_PROBE_TTL_S = _probe_ttl_seconds()
 
 # AWS Parser / Batch settings (used by worker tasks)
 PARSER_INPUTS_BUCKET = os.environ.get("PARSER_INPUTS_BUCKET", "")

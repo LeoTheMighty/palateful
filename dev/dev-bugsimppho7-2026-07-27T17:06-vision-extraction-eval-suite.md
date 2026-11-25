@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:06:00-06:00
 title: Vision-extraction eval suite with image fixtures and recipe-count gate
 from: _bmad-output/planning-artifacts/epic-bugs-import-photo-pipeline.md
-status: in-progress
+status: blocked
 owner: /devx-loop-2026-07-27T21-15-34-312-36147
 branch: feat/dev-bugsimppho7
 ---
@@ -128,3 +128,4 @@ Stories bugs-imp-pho-1..6 shipped multi-recipe fan-out and eval gating, but only
   - Learning: services/ingredient-scraper already lints 'src tests', so widening eval's target follows existing repo precedent rather than inventing a convention — worth checking sibling project.json files before treating a lint gap as an intentional project-wide policy.
   - Learning: Of the 9 Python projects in the monorepo, most lint only their source dir (src/, utils/, agent/, migrations/), so this same blind spot likely exists service-wide. Out of scope here, but a one-line-per-project fix if someone wants CI to cover test code generally.
   - Learning: A filesystem-derived lint-coverage assertion is a stronger guard than a hardcoded dir list: it fails automatically when a new Python dir is added to the service, which is the exact way this hole originally opened.
+- 2026-07-27T22:13:08.227Z — [FAIL] loop abandoned bugsimppho7: iteration budget exhausted (8 iterations without acs_met); worktree preserved at .worktrees/dev-bugsimppho7

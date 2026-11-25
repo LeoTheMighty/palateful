@@ -287,6 +287,13 @@ class ShoppingCartService {
     _currentListId = listId;
   }
 
+  /// Drives the 4xxx-close-code branch of [_handleDisconnect] without a
+  /// live socket. Exposed because the real path needs a channel whose
+  /// `closeCode` the test cannot set.
+  @visibleForTesting
+  Future<void> refreshTokenThenReconnectForTest(int closeCode) =>
+      _refreshTokenThenReconnect(closeCode);
+
   void _handleMessage(dynamic data) {
     try {
       final message = jsonDecode(data as String) as Map<String, dynamic>;
@@ -412,7 +419,19 @@ class ShoppingCartService {
       extras: {'list_id': _currentListId, 'close_code': closeCode},
     );
     try {
-      await getIt<AuthService>().refreshToken();
+      final authService = getIt<AuthService>();
+      final refreshed = await authService.refreshToken();
+      final token = authService.accessToken;
+      if (refreshed && token != null) {
+        // AuthService.refreshToken() only rotates its own credentials.
+        // Nothing else pushes the new access token into ApiClient at
+        // runtime — the Dio 401 interceptor (bas-4) is the only other
+        // writer and it needs an HTTP 401 to fire. Without this line
+        // the _scheduleReconnect below re-reads the same rejected token
+        // from _apiClient.authToken, the backend closes 4003 again, and
+        // the 5s reconnect + ErrorReporter.report pair repeats forever.
+        _apiClient.setAuthToken(token);
+      }
     } catch (e, st) {
       ErrorReporter.report(
         e,

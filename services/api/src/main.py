@@ -46,20 +46,44 @@ async def lifespan(app: FastAPI):
             "Failed to load unit_alias cache on FastAPI startup"
         )
 
-    # aam-1: async engine warm-up. Touch the pool so the first real
-    # request doesn't pay asyncpg's prepared-statement cache build
-    # (~100-300ms per new connection). Lazy-imported so the worker
+    # aam-1 / aam-23: async engine pool pre-warm. Prime *every* pooled
+    # asyncpg connection (up to DB_ASYNC_POOL_SIZE) with a trivial
+    # SELECT 1 so no real request pays asyncpg's prepared-statement
+    # cache build (~100-300ms per fresh connection). The checkouts run
+    # concurrently on purpose: a sequential loop hands the same
+    # connection back on every iteration and only ever warms one.
+    # Runs before the `yield`, so the app serves nothing — /v1/health
+    # included — until the pool is hot. Lazy-imported so the worker
     # container, which reuses this module indirectly via utils, is not
-    # forced to have the async engine configured. aam-23 expands this
-    # to warm every connection in the pool.
+    # forced to have the async engine configured.
     try:
+        import asyncio
+
         from sqlalchemy import text
+        from utils.constants import DB_ASYNC_POOL_SIZE
         from utils.services.database import async_db_engine
 
         if async_db_engine is not None:  # pragma: no branch
-            async with async_db_engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
+            async def _warm_one() -> None:
+                async with async_db_engine.connect() as conn:
+                    await conn.execute(text("SELECT 1"))
+
+            # return_exceptions so one bad connection doesn't abandon the
+            # other in-flight checkouts mid-warm; the failures are
+            # re-raised below into the best-effort handler.
+            results = await asyncio.gather(
+                *(_warm_one() for _ in range(DB_ASYNC_POOL_SIZE)),
+                return_exceptions=True,
+            )
+            failures = [r for r in results if isinstance(r, BaseException)]
+            if failures:
+                raise RuntimeError(
+                    f"{len(failures)}/{DB_ASYNC_POOL_SIZE} pool connections "
+                    f"failed to warm"
+                ) from failures[0]
     except Exception:
+        # Best effort: a DB blip at boot must not crash-loop the task.
+        # Un-warmed connections fall back to lazy init on first use.
         import logging
         logging.getLogger(__name__).exception(
             "Async engine warm-up failed on FastAPI startup"

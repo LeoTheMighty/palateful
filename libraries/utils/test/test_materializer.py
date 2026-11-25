@@ -1,7 +1,7 @@
 """Unit tests for the recurrence materializer's expected-date logic."""
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
 
@@ -20,10 +20,102 @@ def _make_rule(**overrides):
         "end_date": None,
         "tz_name": "America/Los_Angeles",
         "is_shared": False,
+        "calendar_id": uuid.uuid4(),
         "materialized_through": None,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
+
+
+# ----------------------------------------------------------------------
+# In-memory stand-in for a sync Session, enough for materialize().
+#
+# There is no DB-backed test harness under libraries/utils, so the fake
+# interprets the handful of SQLAlchemy constructs materialize() actually
+# emits: `query(Model).filter(<binary expr>...).all()/.first()`, `delete()`,
+# and a postgres `INSERT ... ON CONFLICT DO NOTHING`.
+
+
+def _matches(criterion, row) -> bool:
+    """Evaluate a simple `Column <op> value` / `Column IS NULL` criterion."""
+    import operator as _op
+
+    column = criterion.left.name
+    actual = getattr(row, column, None)
+    expected = getattr(criterion.right, "value", None)
+    # `Column.is_(None)` / `isnot(None)` carry SQLAlchemy's own operator
+    # callables, which expect ClauseElements — map them to identity checks.
+    if criterion.operator.__name__ == "is_":
+        return actual is expected
+    if criterion.operator.__name__ in ("is_not", "isnot"):
+        return actual is not expected
+    return bool(getattr(_op, criterion.operator.__name__, criterion.operator)(
+        actual, expected
+    ))
+
+
+class _FakeQuery:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def filter(self, *criteria):
+        rows = self._rows
+        for criterion in criteria:
+            rows = [r for r in rows if _matches(criterion, r)]
+        return _FakeQuery(rows)
+
+    def all(self):
+        return list(self._rows)
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+
+class _FakeSession:
+    """Holds MealEvent rows in a list and enforces the partial unique index."""
+
+    def __init__(self, rows=None):
+        self.rows = list(rows or [])
+
+    def query(self, model):
+        if model.__name__ == "MealEvent":
+            return _FakeQuery(self.rows)
+        # Meal / Recipe lookups in _resolve_title — nothing seeded.
+        return _FakeQuery([])
+
+    def delete(self, obj):
+        self.rows = [r for r in self.rows if r is not obj]
+
+    def execute(self, stmt):
+        from utils.models.meal_event import MealEvent
+
+        # pg_insert(...).values([...]) stashes the rows in _multi_values.
+        for values in stmt._multi_values[0]:
+            # uq_meal_events_rule_scheduled_at WHERE recurrence_rule_id IS NOT NULL
+            conflict = any(
+                r.recurrence_rule_id is not None
+                and r.recurrence_rule_id == values["recurrence_rule_id"]
+                and r.scheduled_at == values["scheduled_at"]
+                for r in self.rows
+            )
+            if conflict:
+                continue  # ON CONFLICT DO NOTHING
+            self.rows.append(MealEvent(id=uuid.uuid4(), **values))
+
+    def live_rows(self):
+        return [r for r in self.rows if r.archived_at is None]
+
+
+def _daily_rule(**overrides):
+    """A rule that fires every day starting today, in UTC."""
+    base = {
+        "interval": "weekly",
+        "weekdays": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        "start_date": date.today(),
+        "tz_name": "UTC",
+    }
+    base.update(overrides)
+    return _make_rule(**base)
 
 
 class TestExpectedDatesWeekly:
@@ -292,3 +384,142 @@ class TestResolveTitleMealBranch:
         rule = _make_rule(recipe_id=None, meal_id=None, title=None)
         db = self._fake_db()
         assert _resolve_title(rule, db) == "Meal"
+
+
+class TestMaterializedRowFlags:
+    """rcres1 AC4: materialized rows carry `is_recurring=True`.
+
+    Clients key off `recurrence_rule_id`, but `is_recurring` ships on every
+    meal-event response schema, so leaving it at its False default made the
+    flag actively wrong on rule-generated rows.
+    """
+
+    def test_materialized_rows_set_is_recurring(self):
+        from utils.recurrence.materializer import materialize
+
+        rule = _daily_rule()
+        db = _FakeSession()
+        rows = materialize(rule, date.today() + timedelta(days=7), db)
+
+        assert rows
+        assert all(r.is_recurring is True for r in rows)
+        assert all(r.recurrence_rule_id == rule.id for r in rows)
+
+
+class TestMaterializeTombstones:
+    """rcres1: a single-occurrence deletion must survive window advances.
+
+    `DeleteRecurrenceRule._delete_single_occurrence` tombstones the row —
+    sets `archived_at`, keeps `recurrence_rule_id`. The old code detached the
+    row instead, which hid it from materialize()'s dedup query and re-inserted
+    the slot on the next pass.
+    """
+
+    def _seed(self, rule, days=7):
+        db = _FakeSession()
+        from utils.recurrence.materializer import materialize
+
+        materialize(rule, date.today() + timedelta(days=days), db)
+        return db
+
+    def _tombstone(self, db, index=2):
+        """Emulate the endpoint's single-occurrence delete on the Nth row."""
+        victim = sorted(db.rows, key=lambda r: r.scheduled_at)[index]
+        victim.archived_at = datetime.now(UTC)
+        return victim
+
+    def test_deleted_occurrence_not_reinserted_on_window_advance(self):
+        from utils.recurrence.materializer import materialize
+
+        rule = _daily_rule()
+        db = self._seed(rule)
+        assert len(db.rows) == 7
+
+        victim_ts = self._tombstone(db).scheduled_at
+
+        materialize(rule, date.today() + timedelta(days=14), db)
+
+        at_slot = [r for r in db.rows if r.scheduled_at == victim_ts]
+        assert len(at_slot) == 1, "the deleted occurrence was resurrected"
+        assert at_slot[0].archived_at is not None
+        # The advance still filled in the newly-in-window days.
+        assert len(db.live_rows()) == 13
+
+    def test_tombstone_survives_repeated_passes(self):
+        from utils.recurrence.materializer import materialize
+
+        rule = _daily_rule()
+        db = self._seed(rule)
+        victim_ts = self._tombstone(db).scheduled_at
+
+        for extra in (14, 21, 28):
+            materialize(rule, date.today() + timedelta(days=extra), db)
+
+        at_slot = [r for r in db.rows if r.scheduled_at == victim_ts]
+        assert len(at_slot) == 1
+        assert at_slot[0].archived_at is not None
+
+    def test_tombstone_excluded_from_returned_rows(self):
+        from utils.recurrence.materializer import materialize
+
+        rule = _daily_rule()
+        db = self._seed(rule)
+        victim_ts = self._tombstone(db).scheduled_at
+
+        returned = materialize(rule, date.today() + timedelta(days=7), db)
+
+        assert all(r.scheduled_at != victim_ts for r in returned)
+        assert all(r.archived_at is None for r in returned)
+        assert len(returned) == 6
+
+    def test_tombstone_title_not_rewritten_on_rename(self):
+        from utils.recurrence.materializer import materialize
+
+        rule = _daily_rule(title="Pizza")
+        db = self._seed(rule)
+        victim = self._tombstone(db)
+
+        rule.title = "Calzone"
+        materialize(rule, date.today() + timedelta(days=7), db)
+
+        assert victim.title == "Pizza"
+        assert all(r.title == "Calzone" for r in db.live_rows())
+
+    def test_tombstone_dropped_when_slot_leaves_expected_set(self):
+        """Editing the rule so the slot no longer recurs removes the tombstone
+        along with the live rows — there's nothing left to suppress."""
+        from utils.recurrence.materializer import materialize
+
+        rule = _daily_rule()
+        db = self._seed(rule)
+        victim_ts = self._tombstone(db).scheduled_at
+        victim_weekday = victim_ts.date().weekday()
+
+        # Narrow the rule to a single weekday that isn't the tombstoned one.
+        from utils.recurrence.materializer import WEEKDAY_NAMES
+
+        keep = WEEKDAY_NAMES[(victim_weekday + 1) % 7]
+        rule.weekdays = [keep]
+        materialize(rule, date.today() + timedelta(days=7), db)
+
+        assert all(r.scheduled_at != victim_ts for r in db.rows)
+
+    def test_detached_row_still_resurrects_documenting_the_bug(self):
+        """Guard on the root cause: a row detached from its rule is invisible
+        to the dedup query, so the slot re-inserts. This is what the old
+        `_delete_single_occurrence` did — the assertion pins *why* the
+        endpoint must not set `recurrence_rule_id = None`."""
+        from utils.recurrence.materializer import materialize
+
+        rule = _daily_rule()
+        db = self._seed(rule)
+
+        victim = self._tombstone(db)
+        victim_ts = victim.scheduled_at
+        victim.recurrence_rule_id = None  # the old, buggy detach
+
+        materialize(rule, date.today() + timedelta(days=14), db)
+
+        at_slot = [r for r in db.rows if r.scheduled_at == victim_ts]
+        assert len(at_slot) == 2, "detaching re-inserts the slot (root cause)"
+        assert sum(1 for r in at_slot if r.archived_at is None) == 1

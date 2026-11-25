@@ -155,6 +155,30 @@ void main() {
       expect(n.value.destination, '/activity?tab=imports');
     });
 
+    test('sending sits between uploading and navigating (sru-4)', () {
+      final n = ReceiveImportNotifier();
+      addTearDown(n.dispose);
+      n.enterUploading(total: 2_048);
+      n.updateUploadProgress(uploaded: 2_048);
+      n.enterSending();
+      expect(n.value.phase, ReceivePhase.sending);
+      // Byte counters survive so the card can still show what was sent.
+      expect(n.value.uploadedBytes, 2_048);
+      expect(n.value.totalBytes, 2_048);
+    });
+
+    test('a repeat detect with the same dedup key is swallowed, a null key '
+        'always processes (sru-4 Retry)', () {
+      final n = ReceiveImportNotifier();
+      addTearDown(n.dispose);
+      expect(n.onDetect(mime: 'application/pdf', dedupKey: 'k'),
+          ReceiveBranch.pdf);
+      expect(n.onDetect(mime: 'application/pdf', dedupKey: 'k'), isNull);
+      // The error card's Retry passes no key so an impatient tap inside
+      // the 2 s window isn't mistaken for an OS double-fire.
+      expect(n.onDetect(mime: 'application/pdf'), ReceiveBranch.pdf);
+    });
+
     test('error path carries code + message', () {
       final n = ReceiveImportNotifier();
       addTearDown(n.dispose);

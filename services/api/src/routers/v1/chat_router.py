@@ -2,10 +2,11 @@
 
 aam-21 partial flip: `create/list/get/delete` thread endpoints now use
 the async DB + auth deps. `send_message` stays sync — the agent loop
-calls sync `provider.chat(...)` (openai), sync `tool.execute(...)`, and
-manipulates a sync Database from within the SSE generator. Converting
-it is blocked on aam-7 (openai async) + agent-tool async rewrite and
-is left to a follow-up story.
+calls sync `provider.chat(...)` (openai, in `libraries/agent`), sync
+`tool.execute(...)`, and manipulates a sync Database from within the
+SSE generator. aam-7 (openai async in `services/api/src`) has landed;
+converting this remains blocked on the agent-tool async rewrite
+(aam-24 cutover or a dedicated follow-up).
 """
 
 from api.v1.chat import (
@@ -86,8 +87,8 @@ async def send_message(
 ):
     """Send a message and receive an SSE stream of the AI response.
 
-    Intentionally sync — SSE generator chains sync OpenAI + sync agent
-    tool.execute calls. Follow-up story converts this alongside aam-7
-    (openai async) and the agent-tool async rewrite.
+    Intentionally sync — SSE generator chains sync OpenAI (the
+    `libraries/agent` provider) + sync agent tool.execute calls.
+    aam-7 landed; conversion awaits the agent-tool async rewrite.
     """
     return await send_message_stream(thread_id, params, user, database)

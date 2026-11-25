@@ -218,12 +218,12 @@ class UpdateRecurrenceRule(AsyncEndpoint):
         # Past materialized rows stay on the old calendar to preserve
         # historical attribution.
         #
-        # Known gap: detached per-occurrence overrides (meal_events where
-        # `recurrence_rule_id = NULL` from `_delete_single_occurrence`)
-        # are orphaned from the cascade and remain on the old calendar.
-        # Leo can move them individually via Move-to-calendar on the
-        # detail sheet (cal-found-5). A dedicated "move all detached
-        # children" sweep is deferred — the expected cardinality is low.
+        # Per-occurrence deletions are tombstones that keep their
+        # `recurrence_rule_id` (rcres1), so they ride the cascade with the
+        # live rows. Rows detached by the pre-rcres1 build stay orphaned on
+        # the old calendar; Leo can move those individually via
+        # Move-to-calendar on the detail sheet (cal-found-5). The expected
+        # cardinality is low, so no backfill sweep.
         if (
             params.calendar_id is not None
             and str(params.calendar_id) != str(rule.calendar_id)
