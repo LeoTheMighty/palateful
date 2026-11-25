@@ -70,7 +70,7 @@ A deliberate shake on an iOS or Android phone shows a prompt; a tap opens the de
 
 - [ ] `dev/dev-shk101-2026-11-25T10:03-server-trigger-and-ring.md` — Server accepts the trigger and serves the ring. Status: in-review (PR #134 into the workstream branch). Blocked-by: —. Parallel-safe with shk103. **Merging deploys; must precede any client that sends `trigger`.**
 - [ ] `dev/dev-shk103-2026-11-25T10:03-motion-dependency-and-recognizer.md` — Motion dependency and the shake recognizer. Status: ready. Blocked-by: —. Parallel-safe with shk101, shk102. Riskiest: no PR-time iOS/Android build; its pubspec edit fires Xcode Cloud.
-- [ ] `dev/dev-shk102-2026-11-25T10:03-feedback-launcher.md` — One feedback launcher with an app-wide flush. Status: in-review (PR into the workstream branch). Blocked-by: shk101. Parallel-safe with shk103.
+- [ ] `dev/dev-shk102-2026-11-25T10:03-feedback-launcher.md` — One feedback launcher with an app-wide flush. Status: in-review (PR #138 into the workstream branch). Blocked-by: shk101. Parallel-safe with shk103.
 - [ ] `dev/dev-shk104-2026-11-25T10:03-shake-host.md` — Shake host — prompt, suppression, feedback for every admitted user. Status: ready. Blocked-by: shk102, shk103.
 - [ ] `dev/dev-shk105-2026-11-25T10:03-switch-and-hint.md` — Device switch and discoverability hint. Status: ready. Blocked-by: shk104.
 - [ ] `dev/dev-shk106-2026-11-25T10:03-admin-dev-request-route.md` — Admins get the dev-request form. Status: ready. Blocked-by: shk105. External gate X-1: merge only after arq103's route is on `main`; then E-7 on a release build (X-2).
