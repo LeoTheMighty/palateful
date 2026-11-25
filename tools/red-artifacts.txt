@@ -49,6 +49,3 @@
 # pins `fail_under = 100`. Add a sibling file instead.
 
 libraries/utils/test/test_db_credential_wiring.py:rsh106:engine-site-registration-and-iam — database.py (3 engine sites) and libraries/agent runner.py/tasks.py do not call register_rotating_credentials yet (split out of test_db_credential_provider.py by rsh105, whose provider surface is GREEN and deliberately wires no call sites)
-services/api/tests/test_dev_requests_full_path.py:arq102:admin-request-intake (1e84ad) E-1 — bin/prod-script forwards no arguments and the operator scripts do not exist yet; run via evals/E-1_full_path.sh
-services/api/tests/test_dev_requests_containment.py:arq102:admin-request-intake (1e84ad) E-2 — operator scripts do not exist yet; run via evals/E-2_containment_canary.sh
-services/api/tests/test_dev_requests_transitions.py:arq102:admin-request-intake (1e84ad) E-4 — dev_requests_write.py does not exist yet; run via evals/E-4_transitions.sh
