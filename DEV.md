@@ -64,6 +64,17 @@ Dependency shape: bqa101 ∥ bqa102 ∥ bqa103 (disjoint files/repos) → bqa104
 - [ ] `dev/dev-bqa107-2026-07-27T11:45-persona-seeded-passes.md` — Persona-seeded passes — --persona flag + one seeded pass (E-6). Status: ready. Blocked-by: bqa106. Needs Leo attended; cross-repo skill change.
 - [ ] `dev/dev-bqaret-2026-07-27T11:41-retro-browser-qa-agent.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: bqa101, bqa102, bqa103, bqa104, bqa105, bqa106, bqa107.
 
+### Epic — shake-to-report (workstream f89791; RED gate passed 2026-11-25)
+
+A deliberate shake on an iOS or Android phone shows a prompt; a tap opens the dev-request form for an admin (arq103's `/admin/dev-requests/new`, external gate X-1) and the feedback sheet for everyone else, recording the screen. A false shake must cost nothing: prompt before form, suppression while busy, a server-side ring (`off`/`admins`/`everyone`, starts `admins`) and a device switch. The four P0 evals boot the real app and are sha-locked — stories make them pass, never re-author them. Plan: `_devx/workstreams/shake-to-report/plan/agent.md`.
+
+- [ ] `dev/dev-shk101-2026-11-25T10:03-server-trigger-and-ring.md` — Server accepts the trigger and serves the ring. Status: ready. Blocked-by: —. Parallel-safe with shk103. **Merging deploys; must precede any client that sends `trigger`.**
+- [ ] `dev/dev-shk103-2026-11-25T10:03-motion-dependency-and-recognizer.md` — Motion dependency and the shake recognizer. Status: ready. Blocked-by: —. Parallel-safe with shk101, shk102. Riskiest: no PR-time iOS/Android build; its pubspec edit fires Xcode Cloud.
+- [ ] `dev/dev-shk102-2026-11-25T10:03-feedback-launcher.md` — One feedback launcher with an app-wide flush. Status: ready. Blocked-by: shk101. Parallel-safe with shk103.
+- [ ] `dev/dev-shk104-2026-11-25T10:03-shake-host.md` — Shake host — prompt, suppression, feedback for every admitted user. Status: ready. Blocked-by: shk102, shk103.
+- [ ] `dev/dev-shk105-2026-11-25T10:03-switch-and-hint.md` — Device switch and discoverability hint. Status: ready. Blocked-by: shk104.
+- [ ] `dev/dev-shk106-2026-11-25T10:03-admin-dev-request-route.md` — Admins get the dev-request form. Status: ready. Blocked-by: shk105. External gate X-1: merge only after arq103's route is on `main`; then E-7 on a release build (X-2).
+
 ### Epic — rotation-self-heal (workstream 462355; RED gate passed 2026-07-27)
 
 Seeded from the 2026-07-21 credential-rotation outage (6 days; prod frozen on image `c85e350` since 2026-04-26 because `main` has been un-deployable). Critical path: rsh101 → rsh102 → {rsh105 → rsh106} ∥ {rsh103 → rsh104} → rsh107 → rsh109. **rsh101–rsh104 are deadline-bound to 2026-07-29** (next scheduled rotation under the current 7-day cadence); rsh105–rsh109 land after. rsh103 and rsh108 are parallel-safe with everything. Note rsh102's push carries the **first `terraform apply` since 2026-04-26** — including the pending 90-day rotation cadence from `e74303f` — because `terraform-prod` runs `-auto-approve` (`ci.yml:748`); its T2.1 line-by-line plan review is the only gate. rsh104 and rsh107 are terraform-only and need **Actions → Force Deploy**, not a `main` push. RED artifacts were authored at RED — stories re-run them, never re-author them.

@@ -19,8 +19,14 @@
 - [x] Gate: coverage(design)
 - [x] Stage: Plan
 - [x] Gate: coverage(plan)
-- [ ] Stage: RED
-- [ ] Gate: evals
+- [x] Stage: RED
+- [x] Gate: evals
 - [ ] Stage: Execute
+  - [ ] Phase 1: Server accepts the trigger and serves the ring → shk101
+  - [ ] Phase 2: One feedback launcher with an app-wide flush → shk102
+  - [ ] Phase 3: Motion dependency and the shake recognizer → shk103
+  - [ ] Phase 4: Shake host — prompt, suppression, feedback for every admitted user → shk104
+  - [ ] Phase 5: Device switch and discoverability hint → shk105
+  - [ ] Phase 6: Admins get the dev-request form → shk106
 - [ ] Stage: Retro
 - [ ] Stage: Outcome
