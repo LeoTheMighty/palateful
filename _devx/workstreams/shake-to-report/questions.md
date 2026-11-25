@@ -47,3 +47,51 @@
 - **Resolution:** —
 
 ---
+
+## Q-4: E-1 coverage
+
+- **Kind:** gate-concern
+- **Severity:** blocking
+- **Blocks:** gate-plan
+- **Origin:** devx gate coverage · _devx/workstreams/shake-to-report/plan/agent.md
+- **Recommendation:** P0 floor unmet: E-1 is P0 but names no runnable artifact path
+- **Status:** resolved
+- **Resolution:** _devx/workstreams/shake-to-report/decisions/2026-11-25-plan-verify.md
+
+---
+
+## Q-5: E-2 coverage
+
+- **Kind:** gate-concern
+- **Severity:** blocking
+- **Blocks:** gate-plan
+- **Origin:** devx gate coverage · _devx/workstreams/shake-to-report/plan/agent.md
+- **Recommendation:** P0 floor unmet: E-2 is P0 but names no runnable artifact path
+- **Status:** resolved
+- **Resolution:** _devx/workstreams/shake-to-report/decisions/2026-11-25-plan-verify.md
+
+---
+
+## Q-6: E-3 coverage
+
+- **Kind:** gate-concern
+- **Severity:** blocking
+- **Blocks:** gate-plan
+- **Origin:** devx gate coverage · _devx/workstreams/shake-to-report/plan/agent.md
+- **Recommendation:** P0 floor unmet: E-3 is P0 but names no runnable artifact path
+- **Status:** resolved
+- **Resolution:** _devx/workstreams/shake-to-report/decisions/2026-11-25-plan-verify.md
+
+---
+
+## Q-7: E-4 coverage
+
+- **Kind:** gate-concern
+- **Severity:** blocking
+- **Blocks:** gate-plan
+- **Origin:** devx gate coverage · _devx/workstreams/shake-to-report/plan/agent.md
+- **Recommendation:** P0 floor unmet: E-4 is P0 but names no runnable artifact path
+- **Status:** resolved
+- **Resolution:** _devx/workstreams/shake-to-report/decisions/2026-11-25-plan-verify.md
+
+---

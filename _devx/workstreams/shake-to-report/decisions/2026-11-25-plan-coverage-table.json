@@ -1,0 +1,74 @@
+{
+  "rows": [
+    {
+      "id": "E-1",
+      "status": "covered",
+      "where": "Phase 4 (T4.3, T4.5; success: E-1 wrapper exits 0, CI runs it) \u2014 artifact `_devx/workstreams/shake-to-report/evals/E-1_user_path.sh`, matches expectations.md E-1",
+      "note": "self-judged by the authoring session (no subagent tool). Needs Phase 2's trigger in the sheet and Phase 3's plugin; both are Phase 4 dependencies.",
+      "artifact": "_devx/workstreams/shake-to-report/evals/E-1_user_path.sh"
+    },
+    {
+      "id": "E-2",
+      "status": "covered",
+      "where": "Phase 4 (T4.3, T4.5) \u2014 artifact `_devx/workstreams/shake-to-report/evals/E-2_everyday_motion.sh`",
+      "note": "self-judged by the authoring session (no subagent tool). Recognizer lands in Phase 3 but only Phase 4 wires it to a prompt, which E-2's positive control needs.",
+      "artifact": "_devx/workstreams/shake-to-report/evals/E-2_everyday_motion.sh"
+    },
+    {
+      "id": "E-3",
+      "status": "covered",
+      "where": "Phase 4 (T4.2, T4.3, T4.5) \u2014 artifact `_devx/workstreams/shake-to-report/evals/E-3_no_interruption.sh`",
+      "note": "self-judged by the authoring session (no subagent tool). ",
+      "artifact": "_devx/workstreams/shake-to-report/evals/E-3_no_interruption.sh"
+    },
+    {
+      "id": "E-4",
+      "status": "covered",
+      "where": "Phase 6 (T6.1, T6.3) \u2014 artifact `_devx/workstreams/shake-to-report/evals/E-4_role_and_ring.sh`; external gate X-1",
+      "note": "self-judged by the authoring session (no subagent tool). Admin case green only once arq103's route is on main; the plan says Phase 6 merges only after X-1.",
+      "artifact": "_devx/workstreams/shake-to-report/evals/E-4_role_and_ring.sh"
+    },
+    {
+      "id": "E-5",
+      "status": "covered",
+      "where": "Phase 4 (T4.4) \u2014 artifact `app/test/core/shake/shake_eligibility_test.dart`",
+      "note": "self-judged by the authoring session (no subagent tool). Motion-error half of the adapter lands in Phase 3; the eligibility test that observes it is Phase 4's.",
+      "artifact": "app/test/core/shake/shake_eligibility_test.dart"
+    },
+    {
+      "id": "E-6",
+      "status": "covered",
+      "where": "Phase 1 (T1.3) \u2014 artifact `services/api/tests/test_shake_flags_and_trigger.py`",
+      "note": "self-judged by the authoring session (no subagent tool). ",
+      "artifact": "services/api/tests/test_shake_flags_and_trigger.py"
+    },
+    {
+      "id": "E-7",
+      "status": "covered",
+      "where": "Phase 6 (T6.4) \u2014 artifact `_devx/workstreams/shake-to-report/evals/E-7_device_protocol.md`; external gate X-2",
+      "note": "self-judged by the authoring session (no subagent tool). Human, on release builds.",
+      "artifact": "_devx/workstreams/shake-to-report/evals/E-7_device_protocol.md"
+    },
+    {
+      "id": "E-8",
+      "status": "covered",
+      "where": "Phase 2 (T2.5) \u2014 artifact `app/test/features/profile/feedback_launcher_test.dart`",
+      "note": "self-judged by the authoring session (no subagent tool). ",
+      "artifact": "app/test/features/profile/feedback_launcher_test.dart"
+    },
+    {
+      "id": "E-9",
+      "status": "covered",
+      "where": "Phase 5 (T5.3) \u2014 artifact `app/test/features/profile/shake_settings_test.dart`",
+      "note": "self-judged by the authoring session (no subagent tool). ",
+      "artifact": "app/test/features/profile/shake_settings_test.dart"
+    },
+    {
+      "id": "E-10",
+      "status": "covered",
+      "where": "Phase 6 (T6.2) \u2014 artifact `app/test/features/profile/non_shake_paths_test.dart`",
+      "note": "self-judged by the authoring session (no subagent tool). Dev-request half needs arq103's tile (X-1).",
+      "artifact": "app/test/features/profile/non_shake_paths_test.dart"
+    }
+  ]
+}
