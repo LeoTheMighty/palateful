@@ -1,9 +1,13 @@
 """FastAPI application entry point."""
 
+import json
 from contextlib import asynccontextmanager
 
 from config import settings
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mcp_server import build_mcp_app
@@ -173,6 +177,34 @@ async def api_exception_handler(request: Request, exc: APIException) -> JSONResp
         },
         status_code=exc.status_code,
     )
+
+
+class _AsciiJSONResponse(JSONResponse):
+    """JSON with every non-ASCII character escaped, so a body holding text
+    that has no UTF-8 form can still be sent."""
+
+    def render(self, content) -> bytes:
+        return json.dumps(
+            content, ensure_ascii=True, allow_nan=False, separators=(",", ":")
+        ).encode("ascii")
+
+
+# FastAPI's own 422 handler, unchanged — except when it cannot be sent. Its
+# body echoes the rejected input, and JSON can carry a lone surrogate
+# ("\ud800") that has no UTF-8 form, so rendering it raised and a plain
+# validation failure became a 500 (found on POST /v1/admin/dev-requests,
+# arq101; reachable on any route with a JSON body). Only that case changes:
+# the same body, ASCII-escaped.
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    try:
+        return await request_validation_exception_handler(request, exc)
+    except UnicodeEncodeError:
+        return _AsciiJSONResponse(
+            status_code=422, content={"detail": jsonable_encoder(exc.errors())}
+        )
 
 
 # Include routers

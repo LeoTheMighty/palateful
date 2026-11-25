@@ -323,17 +323,19 @@ class TestCreateHappyPath:
         assert row.title == "t" * 120
 
     def test_logs_carry_no_request_text(self, client, admin, mock_async_db, caplog):
-        caplog.set_level(logging.DEBUG, logger="api.v1.admin.create_dev_request")
+        """Every logger, at the level it is configured to run at (prod: INFO,
+        terraform/modules/ecs/main.tf). `utils.api.endpoint` logs its kwargs
+        at DEBUG — Params included — so this holds only while the API runs
+        above DEBUG; that line is shared by every endpoint, not this one's."""
+        caplog.set_level(logging.DEBUG)
         resp = client.post(
             CREATE_PATH,
             json={"title": "canary-title-x1", "body": "canary-body-x2", "done_when": "canary-dw-x3"},
         )
         assert resp.status_code == 201, resp.text
-        endpoint_logs = " ".join(
-            r.getMessage() for r in caplog.records if r.name == "api.v1.admin.create_dev_request"
-        )
-        assert "created" in endpoint_logs  # the check can see the log line
-        assert "canary" not in endpoint_logs
+        logged = caplog.text  # every record, formatted, tracebacks included
+        assert f"created {resp.json()['id8']}" in logged  # the check can see the log line
+        assert "canary" not in logged
 
 
 class TestCreateRefusals:
@@ -406,8 +408,100 @@ class TestCreateRefusals:
                 CREATE_PATH, content=raw, headers={"content-type": "application/json"}
             )
             assert resp.status_code == 422, resp.text
-        assert resp.json()["data"] == {"error": "invalid_text", "field": "body"}
+        (error,) = resp.json()["detail"]
+        assert error["loc"] == ["body", "body"]
+        assert "body is not valid Unicode text" in error["msg"]
         assert client.post(CREATE_PATH, json={"title": "T", "body": "B"}).status_code == 201
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"title": "a\ud800" + "t" * 130, "body": "B"},
+            {"title": "T", "body": "B", "status": "x\ud800"},
+            {"title": "T", "body": "B", "priority": "\ud800"},
+            {"title": "\ud800", "body": " "},
+        ],
+        ids=["surrogate-and-over-length", "surrogate-in-smuggled-key", "surrogate-priority", "two-bad-fields"],
+    )
+    def test_a_surrogate_beside_another_failure_is_still_a_422(self, client, admin, mock_async_db, payload):
+        """FastAPI's 422 echoes every rejected input; with a lone surrogate in
+        one, its UTF-8 body could not be rendered and the 422 became a 500."""
+        resp = client.post(
+            CREATE_PATH, content=json.dumps(payload), headers={"content-type": "application/json"}
+        )
+        assert resp.status_code == 422, resp.text
+        resp.content.decode("ascii")  # the fallback escaped it
+        assert resp.json()["detail"]
+        assert _added(mock_async_db) == []
+
+    def test_an_ordinary_422_is_unchanged_utf8(self, client, admin):
+        resp = client.post(CREATE_PATH, json={"title": "é" * 121, "body": "B"})
+        assert resp.status_code == 422, resp.text
+        assert "é".encode("utf-8") in resp.content  # not escaped: the fallback did not run
+
+
+class TestStoreFailure:
+    """A failed insert must not carry the request text anywhere: SQLAlchemy's
+    DBAPIError str() ends in `[parameters: (…)]`."""
+
+    CANARIES = ("canary-title-s1", "canary-body-s2", "canary-dw-s3")
+
+    def _db_error(self):
+        from sqlalchemy.exc import OperationalError
+
+        err = OperationalError(
+            "INSERT INTO dev_requests (title, body, done_when) VALUES ($1, $2, $3)",
+            self.CANARIES,
+            Exception("connection reset"),
+        )
+        assert all(c in str(err) for c in self.CANARIES)  # control: the leak is real
+        return err
+
+    def _post(self, client):
+        title, body, done_when = self.CANARIES
+        return client.post(
+            CREATE_PATH, json={"title": title, "body": body, "done_when": done_when}
+        )
+
+    @pytest.mark.parametrize("rollback_fails", [False, True], ids=["rollback-ok", "rollback-fails"])
+    def test_carries_no_text_and_refunds_the_slot(
+        self, client, admin, mock_async_db, caplog, monkeypatch, rollback_fails
+    ):
+        import traceback
+
+        from api.v1.admin import create_dev_request as mod
+        from utils.api.endpoint import Endpoint
+
+        recorded: list[str] = []
+        monkeypatch.setattr(
+            Endpoint,
+            "_log_error_to_db",
+            lambda self, error: recorded.append(
+                type(error).__name__ + " " + str(error) + "".join(traceback.format_exception(error))
+            ),
+        )
+        mock_async_db.db.commit.side_effect = self._db_error()
+        if rollback_fails:
+            mock_async_db.db.rollback.side_effect = RuntimeError("rollback canary-title-s1")
+        caplog.set_level(logging.DEBUG)
+
+        resp = self._post(client)
+
+        assert resp.status_code == 500
+        assert resp.json()["error_message"] == "dev_request store failed: OperationalError"
+        mock_async_db.db.rollback.assert_awaited_once()
+        assert len(recorded) == 1 and recorded[0].startswith("DevRequestStoreFailed ")
+        logged = caplog.text  # every record, formatted, tracebacks included
+        assert "store failed" in logged  # the check can see the log lines
+        for text in (resp.text, recorded[0], logged):
+            assert not [c for c in self.CANARIES if c in text], text[-2000:]
+        assert mod._rate_limit_events[str(admin.id)] == []  # the failed call was refunded
+
+    def test_refund_without_a_window_is_a_no_op(self):
+        from api.v1.admin import create_dev_request as mod
+
+        mod._refund_rate_limit("never-seen")
+        assert "never-seen" not in mod._rate_limit_events
 
 
 class TestRateLimit:

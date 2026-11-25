@@ -83,6 +83,15 @@ def _normalized(value: str, field: str, max_length: int) -> str:
     value = normalize_request_text(value)
     if not value:
         raise ValueError(f"{field} is blank after normalization")
+    try:
+        # JSON can carry a lone surrogate ("\ud800"). FR-2 keeps it — it is
+        # category Cs, not Cc/Cf — but such text has no UTF-8 form, so it
+        # could be neither hashed nor stored. (The 422 that echoes it back
+        # is sendable because main.py's validation handler ASCII-escapes a
+        # body it cannot encode.)
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError(f"{field} is not valid Unicode text") from None
     if len(value) > max_length:
         raise ValueError(
             f"{field} is {len(value)} characters after normalization; "
@@ -91,23 +100,25 @@ def _normalized(value: str, field: str, max_length: int) -> str:
     return value
 
 
-def _unencodable_field(params: CreateDevRequest.Params) -> str | None:
-    """The first field with no UTF-8 form, if any.
+def _refund_rate_limit(user_id: str) -> None:
+    """Give back the slot a call took when it stored nothing: FR-4 counts
+    creates, so a failed insert must not lock an admin out for an hour."""
+    times = _rate_limit_events.get(user_id)
+    if times:
+        times.pop()
 
-    JSON can carry a lone surrogate (``"\\ud800"``). FR-2 keeps it — it is
-    category Cs, not Cc/Cf — but such text can be neither hashed nor stored.
-    Checked here rather than in a validator because FastAPI's 422 body
-    echoes the rejected input, which cannot be encoded either, so a
-    validator's 422 becomes a 500 on the way out.
+
+class DevRequestStoreFailed(Exception):
+    """The insert or commit failed. Carries the original error's *type* only.
+
+    A SQLAlchemy DBAPIError's str() ends in ``[parameters: (…)]`` — the
+    title, body and done-when. Left to `AsyncEndpoint.run`, that string
+    would reach the 500 body, CloudWatch and an `error_logs` row, and
+    request text would leave the server some way other than `adopt`.
     """
-    for field in ("title", "body", "done_when"):
-        value = getattr(params, field)
-        try:
-            if value is not None:
-                value.encode("utf-8")
-        except UnicodeEncodeError:
-            return field
-    return None
+
+    def __init__(self, cause: Exception):
+        super().__init__(f"dev_request store failed: {type(cause).__name__}")
 
 
 class CreateDevRequest(AsyncEndpoint):
@@ -116,16 +127,7 @@ class CreateDevRequest(AsyncEndpoint):
     async def execute(self, params: CreateDevRequest.Params):
         user: User = self.user
 
-        bad_field = _unencodable_field(params)
-        if bad_field is not None:
-            return failure(
-                status=422,
-                error_code=ErrorCode.INVALID_REQUEST.value,
-                error_message=f"{bad_field} is not valid Unicode text",
-                data={"error": "invalid_text", "field": bad_field},
-            )
-
-        # Rate-limit next: an over-limit call creates no row.
+        # Rate-limit FIRST: an over-limit call creates no row.
         allowed, retry_after = _check_rate_limit(str(user.id))
         if not allowed:
             logger.info(
@@ -155,9 +157,17 @@ class CreateDevRequest(AsyncEndpoint):
             status="submitted",
             pr_urls=[],
         )
-        self.db.add(request)
-        await self.db.commit()
-        await self.db.refresh(request)
+        try:
+            self.db.add(request)
+            await self.db.commit()
+            await self.db.refresh(request)
+        except Exception as exc:
+            _refund_rate_limit(str(user.id))
+            await self._rollback(exc)
+            # `from None`: every traceback printed from here on (the run()
+            # logger, error_logs.stack_trace) omits the original, whose
+            # message holds the request text.
+            raise DevRequestStoreFailed(exc) from None
 
         logger.info("dev_request: created %s user=%s", id8(request.id), user.id)
         return success(
@@ -170,6 +180,22 @@ class CreateDevRequest(AsyncEndpoint):
             ),
             status=201,
         )
+
+    async def _rollback(self, cause: Exception) -> None:
+        """Roll back after a failed store, logging error *types* only."""
+        logger.error(
+            "dev_request: store failed user=%s err=%s",
+            self.user.id,
+            type(cause).__name__,
+        )
+        try:
+            await self.db.rollback()
+        except Exception as rollback_exc:  # noqa: BLE001 — the store error is what we raise
+            logger.error(
+                "dev_request: rollback failed user=%s err=%s",
+                self.user.id,
+                type(rollback_exc).__name__,
+            )
 
     class Params(BaseModel):
         """Request body. Unknown keys → 422 (`extra="forbid"`): `status`,

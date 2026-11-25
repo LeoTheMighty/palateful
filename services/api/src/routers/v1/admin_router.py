@@ -212,7 +212,11 @@ async def update_feedback_status(
 # ============================================================
 
 
-@admin_router.post("/dev-requests")
+@admin_router.post(
+    "/dev-requests",
+    status_code=201,
+    response_model=CreateDevRequest.Response,
+)
 async def create_dev_request(
     params: CreateDevRequest.Params,
     user: User = Depends(require_admin_async),
