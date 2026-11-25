@@ -20,10 +20,13 @@ Android build anyone has run in CI, and as of today it would fail.
 
 ## Who is waiting on it
 
-- **shk103** (shake-to-report phase 3, PR #135): its exit criterion is a
-  local `flutter build apk --debug` pasted in the PR. Leo chose on 2026-11-25
-  to fix this separately and keep shk103 open on that criterion until this
-  lands, then re-run the build on #135.
+- **shake-to-report's merge to `main`.** shk103 (phase 3, PR #135) had a
+  local `flutter build apk --debug` as its exit criterion. #135 merged into
+  `feat/shake-report-workstream` as `d2afd5f2` with that criterion unmet and
+  documented. The criterion moved: the build must pass before the workstream
+  branch merges to `main`, not before a phase enters the branch. Leo's
+  choice, relayed by the orchestrator. It reaches no user either way, since
+  Android ships only on a `v*.*.*` tag and there are none.
 - **andph1**: its AC "`flutter build apk --debug` in `app/` is run and its
   result recorded here" cannot be answered while the build stops before the
   manifest merger. Its placeholder failure, if real, is next in line behind
@@ -122,3 +125,6 @@ SDK component for this bug.
   `588445f5` for every Android/iOS/pubspec file. Leo chose to fix this
   separately rather than inside PR #135 or by accepting Phase 3 with Android
   unverified. Not started.
+- 2026-11-25T11:50 — #135 merged into the workstream branch (`d2afd5f2`).
+  shk103's apk criterion now gates shake-to-report's merge to `main`
+  rather than #135. "Who is waiting on it" updated to match.
