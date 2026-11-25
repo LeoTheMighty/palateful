@@ -147,8 +147,8 @@
     {
       "id": "FR-5",
       "status": "covered",
-      "where": "Design \u00a7 Host (the prompt: floating SnackBar, 4 s, copy, closed reasons)",
-      "note": "self-judged by the authoring session (no subagent tool). Screen-reader persistence is Flutter's own behavior (RQ10)."
+      "where": "Design \u00a7 Host (the prompt: floating SnackBar, 4 s, persist: accessibleNavigation, copy, closed reasons)",
+      "note": "self-judged by the authoring session (no subagent tool). Re-judged after the RED-stage revise: the 4 s fade holds only because the design now passes `persist` explicitly; Flutter 3.41 persists any snackbar with an action by default (RQ10, corrected). Screen-reader persistence comes from the same flag."
     },
     {
       "id": "FR-6",

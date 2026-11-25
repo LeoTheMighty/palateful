@@ -40,7 +40,7 @@ waiver: { active: false, approver: null, reason: null }
 | FR-2 | ✅ | Design § Recognizer (MotionSource, 20 ms); Constraints 1-2 | self-judged by the authoring session (no subagent tool).  |
 | FR-3 | ✅ | Design § Recognizer (algorithm steps 1-5, ShakeTuning) | self-judged by the authoring session (no subagent tool).  |
 | FR-4 | ✅ | Design § Recognizer step 5 (cooldown); § Host (two ignored → session mute) | self-judged by the authoring session (no subagent tool).  |
-| FR-5 | ✅ | Design § Host (the prompt: floating SnackBar, 4 s, copy, closed reasons) | self-judged by the authoring session (no subagent tool). Screen-reader persistence is Flutter's own behavior (RQ10). |
+| FR-5 | ✅ | Design § Host (the prompt: floating SnackBar, 4 s, persist: accessibleNavigation, copy, closed reasons) | self-judged by the authoring session (no subagent tool). Re-judged after the RED-stage revise: the 4 s fade holds only because the design now passes `persist` explicitly; Flutter 3.41 persists any snackbar with an action by default (RQ10, corrected). Screen-reader persistence comes from the same flag. |
 | FR-6 | ✅ | Design § Host (suppression list); § Modal-route tracking | self-judged by the authoring session (no subagent tool). Text focus via EditableTextState ancestor (RQ7). |
 | FR-7 | ✅ | Design § Host (routing on tap: isAdmin twice, route-exists check, push) | self-judged by the authoring session (no subagent tool).  |
 | FR-8 | ✅ | Design § Host (eligibility inputs) | self-judged by the authoring session (no subagent tool).  |
