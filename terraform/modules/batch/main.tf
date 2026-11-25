@@ -194,10 +194,15 @@ resource "aws_batch_compute_environment" "parser_ondemand_gpu" {
     desired_vcpus = 0
     max_vcpus     = var.max_ondemand_vcpus
 
+    # Same five types as the spot environment. The fallback should not have
+    # a narrower pool than the primary it exists to cover for — g5.2xlarge
+    # was omitted by oversight, not by design (caught by palateful-0e in
+    # independent re-confirmation).
     instance_type = [
       "g4dn.xlarge",
       "g4dn.2xlarge",
       "g5.xlarge",
+      "g5.2xlarge",
       "g6.xlarge",
     ]
 
@@ -241,17 +246,47 @@ resource "aws_batch_job_queue" "parser" {
   state    = "ENABLED"
   priority = 1
 
-  # Order matters: Batch fills from order 1 and only reaches order 2 when
-  # the first environment cannot provide capacity. Spot first, on-demand
-  # as the fallback that makes an import actually complete (pcap1).
+  # odback1 (2026-09-24): ON-DEMAND FIRST, spot second. Restores #76's
+  # ordering now that `L-DB2E81BA` has actually been granted.
+  #
+  #   L-DB2E81BA  "Running On-Demand G and VT instances"  = 32
+  #   L-3819A6DF  "All G and VT Spot Instance Requests"   = 32
+  #
+  # `spotback1` put spot first **only** because the on-demand quota was 0
+  # and the environment could not launch anything. That reason has expired:
+  # AWS granted case 179026203300222 on 2026-09-24. **The TEMPORARY markers
+  # are removed because the condition they described is gone**, not because
+  # anyone changed their mind about the design.
+  #
+  # Why on-demand leads, from #76: Batch reaches order 2 only when order 1
+  # **cannot allocate**, not when it allocates and fails to deliver. Spot
+  # first fails open into "queued forever" — observed three times in two
+  # days, at 65, 88 and 90+ minutes, against April's ~11.9-minute jobs.
+  # On-demand first fails into "slightly more expensive": about **$7.50 a
+  # month** at April's real volume (40 jobs, 8.20 GPU-hours; the earlier
+  # $4.36 counted only successful runs). Spot stays at order 2 and still
+  # absorbs work whenever it has capacity, so the real figure lands below.
+  #
+  # **Two things that must not be forgotten here, both learned the hard
+  # way:**
+  #
+  # 1. `CASE_CLOSED` does not mean granted. The approval email for this
+  #    quota arrived while `Quota.Value` still read **0.0** — AWS states a
+  #    30-minute propagation window. Before relying on any quota, read
+  #    `service-quotas get-service-quota … --query 'Quota.Value'`.
+  # 2. **Order 1 being capable is not the whole story.** Both GPU compute
+  #    environments are pinned to `us-east-1a`/`1b`, which score **2** and
+  #    **1** for spot placement. On-demand has no placement-score problem,
+  #    but the AZ narrowness is inherited by whichever environment leads —
+  #    see `azwide1`.
   compute_environment_order {
     order               = 1
-    compute_environment = aws_batch_compute_environment.parser_spot_gpu.arn
+    compute_environment = aws_batch_compute_environment.parser_ondemand_gpu.arn
   }
 
   compute_environment_order {
     order               = 2
-    compute_environment = aws_batch_compute_environment.parser_ondemand_gpu.arn
+    compute_environment = aws_batch_compute_environment.parser_spot_gpu.arn
   }
 
   tags = {

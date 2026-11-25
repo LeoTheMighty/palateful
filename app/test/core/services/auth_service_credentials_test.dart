@@ -1,5 +1,6 @@
 import 'package:auth0_flutter/auth0_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:palateful/core/services/auth_failure_mode.dart';
 import 'package:palateful/core/services/auth_service.dart';
 import 'package:palateful/core/services/error_reporter.dart';
 
@@ -107,6 +108,40 @@ void main() {
       expect(await auth.tryRestoreCredentials(), isFalse);
       expect(cm.calls, contains('clearCredentials'));
       expect(reports.single.extras?['cleared'], isTrue);
+    });
+
+    test('every restore failure carries a failureMode (authrep1)', () async {
+      // Crashlytics groups by stack, so all three land in one group without
+      // this key — a transient network blip is then indistinguishable from
+      // a revoked token in the dashboard.
+      final cases = <String, String>{
+        'RENEW_FAILED': AuthFailureMode.renewFailed,
+        'NO_REFRESH_TOKEN': AuthFailureMode.noRefreshToken,
+        'NO_CREDENTIALS': AuthFailureMode.noCredentials,
+      };
+      for (final entry in cases.entries) {
+        reports.clear();
+        final localCm = _FakeCredentialsManager()
+          ..hasValid = true
+          ..credentialsError = _cmError(entry.key);
+        final auth = AuthService(credentialsManager: localCm);
+
+        await auth.tryRestoreCredentials();
+
+        expect(reports.single.extras?['failureMode'], entry.value,
+            reason: 'restore failure ${entry.key}');
+      }
+    });
+
+    test('a non-Auth0 restore failure is still reported (authrep1)', () async {
+      // The generic catch used to be the one that reported nothing useful.
+      cm.hasValid = true;
+      cm.credentialsError = StateError('platform channel died');
+      final auth = AuthService(credentialsManager: cm);
+
+      expect(await auth.tryRestoreCredentials(), isFalse);
+      expect(reports.single.operation, 'restoreCredentials');
+      expect(reports.single.extras?['failureMode'], AuthFailureMode.unknown);
     });
 
     test('no stored credentials → cleared, and nothing else is disturbed', () async {

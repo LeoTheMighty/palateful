@@ -11,7 +11,7 @@ void main() {
         'role': 'editor',
         'status': 'active',
         'invited_by_id': 'u-0',
-        'created_at': '2026-04-17T10:00:00Z',
+        'created_at': '2026-04-17T10:00:00Z',  // age-independent — CalendarMember.createdAt is parsed and never read
       });
       expect(m.role, 'editor');
       expect(m.status, 'active');
@@ -28,7 +28,7 @@ void main() {
         'role': 'owner',
         'status': 'active',
         'invited_by_id': null,
-        'created_at': '2026-04-17T10:00:00Z',
+        'created_at': '2026-04-17T10:00:00Z',  // age-independent — CalendarMember.createdAt is parsed and never read
       });
       expect(m.isOwner, isTrue);
       expect(m.invitedById, isNull);
@@ -42,7 +42,7 @@ void main() {
         'role': 'editor',
         'status': 'pending',
         'invited_by_id': 'u-0',
-        'created_at': '2026-04-17T10:00:00Z',
+        'created_at': '2026-04-17T10:00:00Z',  // age-independent — CalendarMember.createdAt is parsed and never read
         'invitation_id': 'inv-1',
       });
       expect(m.isPending, isTrue);

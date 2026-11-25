@@ -74,3 +74,22 @@ reports the same red X.
 - 2026-09-23T01:15 — filed from a live instance during #53's merge
   (palateful-41 caught it). The re-run is where the fix actually applies; the
   first run's red X meant "never attempted".
+- 2026-09-23T02:00 — **prior instance of a misleading ref reading, recorded so
+  a recurrence has something to point at.** After a `--force-with-lease` push
+  to `feat/dev-harden`, `gh pr view --json headRefOid` reported head
+  **`b8b103ed`**; moments later the same query returned **`7cd13e8d`**, the
+  commit actually pushed. `b8b103ed` exists as a local object with a
+  *different parent* and a tree carrying main's newer work — i.e. what a
+  commit built on another base looks like — and it is **not** in the
+  worktree's reflog, which shows a clean rebase followed by the real commit.
+  Nothing was lost: local matched remote, the reflog was mine, and the diff
+  against `main` was the intended docs-only 8 files. palateful-41 confirmed
+  no other tab pushed to that branch. Most likely GitHub briefly serving a
+  stale or intermediate ref view after a force-push.
+
+  **Why it belongs in this spec:** the same class. A reading that looks
+  authoritative — a head SHA from the API — can describe something other than
+  what happened, and acting on it (force-pushing "back" over the unexpected
+  SHA) would have destroyed real work. **The check that settled it was local
+  evidence: reflog, parents, and the diff against `main`** — not a second
+  query to the same source that produced the doubtful reading.

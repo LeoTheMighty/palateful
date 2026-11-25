@@ -29,6 +29,15 @@ class ErrorReporter {
   @visibleForTesting
   static ReportHook? testReportHook;
 
+  /// Test-only hook. Fires for every report that WOULD be mirrored to the
+  /// backend, before both the report-hook early return and the debug/E2E
+  /// suppression check — so a test can assert the routing itself. `flutter
+  /// test` runs in debug, where the real POST is suppressed, so this is the
+  /// only way to tell "not mirrored because pre-auth" from "not mirrored
+  /// because debug", and installing [testReportHook] must not hide it.
+  @visibleForTesting
+  static void Function(String? area, String? operation)? testMirrorHook;
+
   /// Test-only hook. When set, every [log] call invokes the hook.
   @visibleForTesting
   static void Function(String message)? testLogHook;
@@ -188,6 +197,12 @@ class ErrorReporter {
   /// For [DioException]s the method, path, and status code are attached
   /// as custom keys. Request/response bodies are never sent — recipe
   /// content is user-generated PII.
+  /// Pass `mirror: false` when the event happened with no usable access
+  /// token — see [reportPreAuth], which is this with the flag pinned. The
+  /// flag exists as a parameter as well so a call site whose answer is
+  /// known only at runtime (an auth failure that may or may not still hold
+  /// a live token) can stay a single, visible `ErrorReporter.report(` call
+  /// rather than hiding behind a wrapper the silent-catch guard cannot see.
   static void report(
     Object error,
     StackTrace? stack, {
@@ -195,7 +210,68 @@ class ErrorReporter {
     String? operation,
     Map<String, Object?>? extras,
     bool fatal = false,
+    bool mirror = true,
   }) {
+    _report(
+      error,
+      stack,
+      area: area,
+      operation: operation,
+      extras: extras,
+      fatal: fatal,
+      mirror: mirror,
+    );
+  }
+
+  /// Record a caught error that happened **before there is a usable access
+  /// token** — Crashlytics only, never the `error_logs` mirror.
+  ///
+  /// The mirror POSTs to `/v1/users/me/client-errors`, which is
+  /// authenticated. Every failure on the way to being signed in (restore,
+  /// login, renewal) is by definition a failure to hold a valid token, so
+  /// mirroring it produces a 401 the mirror then swallows: the event is
+  /// lost and the only trace is a spurious 401 in the API logs. Crashlytics
+  /// needs no token, so it is the sink that actually receives these.
+  ///
+  /// Same arguments as [report]. Prefer [report] anywhere a signed-in user
+  /// is a precondition — an error_logs row is queryable by `audit_errors.py`
+  /// and a Crashlytics non-fatal is not.
+  static void reportPreAuth(
+    Object error,
+    StackTrace? stack, {
+    String? area,
+    String? operation,
+    Map<String, Object?>? extras,
+  }) {
+    _report(
+      error,
+      stack,
+      area: area,
+      operation: operation,
+      extras: extras,
+      fatal: false,
+      mirror: false,
+    );
+  }
+
+  static void _report(
+    Object error,
+    StackTrace? stack, {
+    required bool mirror,
+    String? area,
+    String? operation,
+    Map<String, Object?>? extras,
+    bool fatal = false,
+  }) {
+    // The mirror hook fires BEFORE the report-hook early return, so a test
+    // that installs both still observes the routing decision. It used to sit
+    // after, which made every call-site test blind to AC2: swapping a
+    // reportPreAuth back to report at a call site kept those tests green
+    // while the event started 401ing against the mirror.
+    if (mirror) {
+      testMirrorHook?.call(area, operation);
+    }
+
     final hook = testReportHook;
     if (hook != null) {
       hook(error, stack, area: area, operation: operation, extras: extras, fatal: fatal);
@@ -204,8 +280,11 @@ class ErrorReporter {
 
     // Mirror to backend regardless of Crashlytics suppression state —
     // a web or debug session still benefits from an error_logs row when
-    // bound to a real backend.
-    _mirrorReportToBackend(error, area: area, operation: operation, extras: extras);
+    // bound to a real backend. Skipped for pre-auth events, which the
+    // authenticated mirror endpoint cannot accept (see [reportPreAuth]).
+    if (mirror) {
+      _mirrorReportToBackend(error, area: area, operation: operation, extras: extras);
+    }
 
     if (_reportingDisabled) {
       debugPrint(

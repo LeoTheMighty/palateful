@@ -8,7 +8,9 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
 import '../../core/state/mutation_bus.dart';
+import '../../core/state/import_job_statuses.dart';
 import '../../core/theme/import_state_colors.dart';
+import '../recipes/add_recipe/models/import_batch.dart';
 import 'models/import_item_telemetry.dart';
 import 'providers/activity_archive_provider.dart';
 import 'providers/activity_read_provider.dart';
@@ -41,13 +43,13 @@ class ImportsTab extends ConsumerStatefulWidget {
 /// In-progress job statuses: a job in any of these lands in the Blue
 /// section (job-granularity — we show "Importing 3 of 10" rather than
 /// one row per pending item).
-const _inProgressJobStatuses = {
-  'pending',
-  'processing',
-  'extracting',
-  'matching',
-  'awaiting_parser',
-};
+/// Job-level in-progress test. Lives in
+/// `core/state/import_job_statuses.dart` so this file and the parser-batch
+/// model cannot drift apart — two hand-kept sets in two files only happened
+/// to partition the server's vocabulary, and one new server status would
+/// have reproduced "the badge says 1 and the tab is empty" in a new shape.
+/// An unrecognised status counts as in-progress, so it renders.
+bool _isInProgressJob(dynamic j) => isJobInProgress(j['status']?.toString());
 
 /// Bucketing is driven by `item.status`, not `job.status`. A completed
 /// job can still hold failed / awaiting_review / skipped items, and the
@@ -61,6 +63,10 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   final _readProvider = getIt<ActivityReadProvider>();
 
   List<_JobView> _inProgress = [];
+
+  /// Parser batches that produced no ImportJobs and are past the grace
+  /// window — dead, not slow. Rendered in Failed (see parsercap1).
+  List<_JobView> _stalledBatches = [];
   List<_ItemView> _needsReview = [];
   List<_ItemView> _failed = [];
   List<_ItemView> _autoImported = [];
@@ -156,16 +162,60 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
       // Blue — job-granularity. Items in pending/extracting/matching
       // states are represented by their parent job (e.g. "Importing 3
       // of 10") rather than one row per in-flight item.
-      final inProgress = rawJobs
-          .where((j) =>
-              _inProgressJobStatuses.contains(j['status']?.toString()))
-          .map<_JobView>(_JobView.fromJson)
+      final inProgress =
+          rawJobs.where(_isInProgressJob).map<_JobView>(_JobView.fromJson).toList();
+
+      // impvis1: a photo import exists as a ParserBatch BEFORE it fans out
+      // into ImportJobs, and the two queries above cannot see it. That is
+      // the gap Leo hit — the Add Recipe strip counted "1 import in
+      // progress" from this very endpoint while this tab rendered nothing.
+      // Only batches with no ImportJob of their own are synthesised here;
+      // once a batch has fanned out, its jobs are already above and a
+      // second row would double-count one import.
+      //
+      // Note the two lists are filtered by different columns server-side:
+      // a batch's `import_jobs` exclude dismissed rows
+      // (`list_parser_batches.py:51`) while `rawJobs` excludes archived ones
+      // (`list_import_jobs.py:74-75`). Nothing writes `ImportJob.archived_at`
+      // today, so the two cannot disagree yet; if something starts to, an
+      // archived-but-not-dismissed job would resurrect its batch here.
+      final renderedJobIds = rawJobs.map((j) => j['id'].toString()).toSet();
+      final now = DateTime.now();
+      final orphanBatches = (await _loadPreFanOutBatches())
+          .where((b) =>
+              b.importJobs.every((ij) => !renderedJobIds.contains(ij.id)))
+          .toList();
+      if (!mounted) return;
+
+      inProgress.addAll(
+        orphanBatches.where((b) => b.isInFlightAt(now)).map(_JobView.fromBatch),
+      );
+
+      // Past the grace window with no ImportJobs, a batch is not slow — it
+      // is dead, and saying "In Progress" about it is a spinner that never
+      // stops. Measured case (parsercap1): batch 9384da8a submitted
+      // 19:10:33Z, its AWS Batch job never started, three attempts died on
+      // `instance-terminated-no-capacity`, terminal FAILED at 22:17Z, zero
+      // ImportJobs ever created. Nothing server-side reconciles the batch
+      // row, so it still reads `submitted` — age is the only signal the
+      // client has, which is why this says "never started" rather than
+      // claiming to know the cause.
+      // Only batches that never fanned out. One whose jobs exist but are
+      // absent from `rawJobs` (dismissed, say) is not dead — its jobs are
+      // accounted for elsewhere, and calling it failed would be a second
+      // row for an import the user already dealt with.
+      final stalledBatches = orphanBatches
+          .where((b) => !b.isInFlightAt(now) && !b.hasFannedOut)
+          .map(_JobView.fromStalledBatch)
           .toList();
 
       // Auto-Imported + Skipped cut off at 30 days — older entries are
       // reachable via See-all. Needs Review + Failed are actionable, so
       // they show regardless of age.
       final cutoff = DateTime.now().subtract(const Duration(days: 30));
+      // job id -> how many of its items are still in flight while the job
+      // itself is not. One row per job, never one per item.
+      final stragglersByJob = <String, int>{};
       final needsReview = <_ItemView>[];
       final failed = <_ItemView>[];
       final autoImported = <_ItemView>[];
@@ -193,18 +243,61 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
                 break;
               }
               skipped.add(view);
+            case 'pending':
+            case 'extracting':
+            case 'matching':
+              // Normally covered by the parent job's Blue row. When the
+              // parent has moved on, nothing rendered these at all while
+              // `imports_actionable` counted every one.
+              //
+              // Counted per JOB, not per item. `awaiting_review` is not an
+              // in-progress status but the job is still running —
+              // `create_recipe_task.py:465-483` flips a job to
+              // `awaiting_review` as soon as one item needs review, with
+              // the rest still `pending` — so one row per item turned a
+              // 50-URL bulk import into 48 rows and broke this section's
+              // job-granularity rule.
+              if (!_isInProgressJob(j)) {
+                stragglersByJob.update(
+                  j['id'].toString(),
+                  (n) => n + 1,
+                  ifAbsent: () => 1,
+                );
+              }
             default:
               break;
           }
         }
       }
 
+      for (final j in rawJobs) {
+        final jobId = j['id'].toString();
+        final straggling = stragglersByJob[jobId];
+        if (straggling == null) continue;
+        // A cancelled import's leftovers are abandoned, not in flight —
+        // rendering "Importing 0 of 17" for an import the user cancelled
+        // would be a lie with a progress ring on it.
+        if (kAbandonedJobStatuses.contains(j['status']?.toString())) continue;
+        inProgress.add(_JobView.fromStragglers(j, straggling));
+      }
+
+      // Newest first, like every other section — a batch row that has just
+      // been created is the newest thing on screen and was rendering under
+      // older jobs because this list alone was never sorted.
+      inProgress.sort((a, b) {
+        final at = a.createdAt, bt = b.createdAt;
+        if (at == null && bt == null) return 0;
+        if (at == null) return 1;
+        if (bt == null) return -1;
+        return bt.compareTo(at);
+      });
       needsReview.sort(_byCreatedAtDesc);
       failed.sort(_byCreatedAtDesc);
       autoImported.sort(_byCreatedAtDesc);
       skipped.sort(_byCreatedAtDesc);
 
       setState(() {
+        _stalledBatches = stalledBatches;
         _inProgress = inProgress;
         _needsReview = needsReview;
         _failed = failed;
@@ -236,6 +329,35 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
         });
       }
       ErrorReporter.report(e, st, area: 'activity', operation: 'imports_tab_load');
+    }
+  }
+
+  /// Active parser batches that have not yet produced an ImportJob.
+  ///
+  /// Failure here must not take the whole tab down with it: jobs and items
+  /// are the main surface, and a batches outage should cost the pre-fan-out
+  /// rows only. Reported rather than swallowed, so the degradation is
+  /// visible in Crashlytics instead of looking like "no imports".
+  Future<List<ImportBatch>> _loadPreFanOutBatches() async {
+    try {
+      final response = await _apiClient.listParserBatches(
+        activeOnly: true,
+        limit: 20,
+      );
+      final raw = (response.data['batches'] as List?) ?? const [];
+      return raw
+          .whereType<Map>()
+          .map((m) => ImportBatch.fromJson(m.cast<String, dynamic>()))
+          // `isActive` (the raw status), NOT `isInFlight`: the caller
+          // partitions these into still-working and dead, and filtering by
+          // in-flight here would drop the dead ones before they could be
+          // rendered as failed.
+          .where((b) => b.isActive)
+          .toList();
+    } catch (e, st) {
+      ErrorReporter.report(e, st,
+          area: 'activity', operation: 'imports_tab_batches');
+      return const [];
     }
   }
 
@@ -383,6 +505,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     final visibleInProgress = _inProgress;
 
     final allEmpty = visibleInProgress.isEmpty &&
+        _stalledBatches.isEmpty &&
         visibleReview.isEmpty &&
         visibleFailed.isEmpty &&
         visibleAutoImported.isEmpty &&
@@ -464,18 +587,20 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
           ),
           ImportStateSection(
             label: 'Failed',
-            count: visibleFailed.length,
+            count: visibleFailed.length + _stalledBatches.length,
             color: stateColors.failed,
-            children: visibleFailed
-                .map((i) => _buildSwipeableItemRow(
-                      item: i,
-                      stateColor: stateColors.failed,
-                      chipLabel: 'Failed',
-                      rowState: ImportRowState.failed,
-                      onTap: () => context
-                          .push('/recipes/import/review/${i.id}'),
-                    ))
-                .toList(),
+            children: [
+              ..._stalledBatches
+                  .map((b) => _buildStalledBatchRow(b, stateColors)),
+              ...visibleFailed.map((i) => _buildSwipeableItemRow(
+                    item: i,
+                    stateColor: stateColors.failed,
+                    chipLabel: 'Failed',
+                    rowState: ImportRowState.failed,
+                    onTap: () =>
+                        context.push('/recipes/import/review/${i.id}'),
+                  )),
+            ],
           ),
           ImportStateSection(
             label: 'Auto-Imported',
@@ -570,8 +695,30 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
           showProgressRing: true,
           progressColor: states.inProgress,
         ),
-        onTap: () => context.push('/recipes/import/review-list/${job.id}'),
+        onTap: job.openable
+            ? () => context.push('/recipes/import/review-list/${job.id}')
+            : null,
       ),
+    );
+  }
+
+  /// A batch whose parser job never produced anything.
+  ///
+  /// No swipe and no tap: there is no ImportItem to archive and no
+  /// ImportJob to open — the rows behind it were never created. The copy
+  /// says what is known (it never started) and not what caused it; the
+  /// client cannot tell a capacity failure from a crash, and nothing
+  /// server-side has marked the batch failed at all (parsercap1).
+  Widget _buildStalledBatchRow(_JobView batch, ImportStateColors states) {
+    final photos = batch.totalItems;
+    return ImportRow(
+      id: batch.id,
+      sourceIcon: _iconForSourceType('photo'),
+      title: photos == 1 ? '1 photo' : '$photos photos',
+      statusLabel: 'Import failed — the parser never started',
+      stateColor: states.failed,
+      stateChipLabel: 'Failed',
+      timeLabel: _formatTime(batch.createdAt),
     );
   }
 
@@ -860,6 +1007,10 @@ class _ExpandableRow extends ConsumerWidget {
 
 class _JobView {
   final String id;
+
+  /// False when [id] is not a real ImportJob id — a synthesised row for a
+  /// parser batch that has not fanned out. Those rows have nothing to open.
+  final bool openable;
   final String? sourceType;
   final String? sourceUrl;
   final int totalItems;
@@ -868,12 +1019,58 @@ class _JobView {
 
   _JobView({
     required this.id,
+    this.openable = true,
     required this.sourceType,
     required this.sourceUrl,
     required this.totalItems,
     required this.processedItems,
     required this.createdAt,
   });
+
+  /// A parser batch that has not fanned out yet. `group_count` is the
+  /// photo count, which is what the user is waiting on, so it reads as
+  /// "Importing 0 of 3" rather than a bare spinner.
+  ///
+  /// `openable: false` — there is no ImportJob behind this row yet, and the
+  /// review-list route takes a UUID. Pushing `batch:<uuid>` at it produced
+  /// a 500 and an `error_logs` row per tap, on the row the user is most
+  /// likely to tap because it is the one they are waiting on.
+  factory _JobView.fromBatch(ImportBatch b) => _JobView(
+        id: 'batch:${b.id}',
+        openable: false,
+        sourceType: 'photo',
+        sourceUrl: null,
+        totalItems: b.groupCount,
+        processedItems: 0,
+        createdAt: b.createdAt,
+      );
+
+  /// A batch that produced no ImportJobs and is past the grace window.
+  /// Same shape as [fromBatch] — nothing to open, because there is still no
+  /// ImportJob behind it.
+  factory _JobView.fromStalledBatch(ImportBatch b) => _JobView(
+        id: 'batch:${b.id}',
+        openable: false,
+        sourceType: 'photo',
+        sourceUrl: null,
+        totalItems: b.groupCount,
+        processedItems: 0,
+        createdAt: b.createdAt,
+      );
+
+  /// Items still in flight under a job that has already moved on, summarised
+  /// as one row for the job. Keeps the job's real id, so the row opens the
+  /// same review list as any other job row.
+  factory _JobView.fromStragglers(dynamic j, int straggling) => _JobView(
+        id: j['id'].toString(),
+        sourceType: j['source_type'] as String?,
+        sourceUrl: j['source_url'] as String?,
+        totalItems: straggling,
+        processedItems: 0,
+        createdAt: j['created_at'] != null
+            ? DateTime.tryParse(j['created_at'].toString())
+            : null,
+      );
 
   factory _JobView.fromJson(dynamic j) => _JobView(
         id: j['id'].toString(),

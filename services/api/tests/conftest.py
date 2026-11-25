@@ -803,9 +803,34 @@ class MockExecuteResult:
 # Helper to apply SQLAlchemy column defaults (simulating DB behavior)
 # ---------------------------------------------------------------------------
 
+def _model_has_id_column(obj) -> bool:
+    """True if this model actually maps an `id` column.
+
+    Join tables (`JoinsBase`) have composite primary keys and no `id`. A
+    non-mapped object (plain mock) is treated as having one, since that is
+    what the mocks rely on.
+    """
+    try:
+        from sqlalchemy import inspect as sa_inspect
+
+        return "id" in sa_inspect(type(obj)).columns
+    except Exception:
+        return True
+
+
 def _apply_column_defaults(obj):
-    """Apply SQLAlchemy column defaults to a model instance."""
-    if getattr(obj, 'id', None) is None:
+    """Apply SQLAlchemy column defaults to a model instance.
+
+    DO NOT reinstate an unconditional `obj.id = uuid4()` here. It invented an
+    `id` on models that have none — `getattr(obj, 'id', None)` returns None
+    for a missing attribute just as it does for a null column — so production
+    code reading `ri.id` on a join table passed every test and raised
+    AttributeError in prod. That shipped: manual recipe creation 500'd for
+    every user, and each retry left a partial recipe behind (recid500,
+    2026-09-24). `MockRecipeIngredient` below strips `id` for the same reason;
+    this function used to put it back.
+    """
+    if getattr(obj, 'id', None) is None and _model_has_id_column(obj):
         obj.id = str(uuid.uuid4())
     if getattr(obj, 'created_at', None) is None:
         obj.created_at = datetime.now(UTC)

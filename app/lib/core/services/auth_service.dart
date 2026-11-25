@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../config/auth0_urls.dart';
 import '../config/environment.dart';
+import 'auth_failure_mode.dart';
 import 'error_reporter.dart';
 
 // Conditional import for web
@@ -53,6 +54,45 @@ class AuthService extends ChangeNotifier {
   /// every cold start in that window down the raw renewal path.
   static const int _refreshBufferSeconds = 300;
 
+  /// Report an auth-path failure to the sink that can actually receive it.
+  ///
+  /// The `error_logs` mirror POSTs `/v1/users/me/client-errors`, which is
+  /// behind `get_current_user_async`. Whether that can succeed is a property
+  /// of the moment, not of the call site: `refreshToken()` runs both
+  /// proactively (token still valid for up to [_refreshBufferSeconds], so the
+  /// mirror works and an `audit_errors.py`-queryable row is worth having) and
+  /// reactively from `ApiClient`'s 401 interceptor (token already rejected,
+  /// so the mirror 401s and `_postMirror` drops the event). Deciding per call
+  /// site meant guessing; this asks the token.
+  ///
+  /// Sites that are pre-auth by construction — restore, login, the web
+  /// callback — call [ErrorReporter.reportPreAuth] directly instead, because
+  /// there the answer can never be "a token exists".
+  /// True when the token on hand could still authenticate the `error_logs`
+  /// mirror POST (`/v1/users/me/client-errors`, behind
+  /// `get_current_user_async`).
+  ///
+  /// The catches below pass this as `mirror:` rather than calling a
+  /// reporting wrapper: the silent-catch guard looks for a literal
+  /// `ErrorReporter.report(` inside the catch block, and a helper that
+  /// reports on the catch's behalf is exactly the indirection that makes a
+  /// swallow look handled. Keeping the call visible keeps the guard honest
+  /// about this file.
+  bool get _canMirrorReport {
+    final expiresAt = _credentials?.expiresAt;
+    return accessToken != null &&
+        (expiresAt == null || expiresAt.isAfter(DateTime.now()));
+  }
+
+  /// Standard extras for an auth report: the failure mode, plus the sink
+  /// decision itself so triage sees the routing rather than inferring it
+  /// from a row's presence or absence in `error_logs`.
+  Map<String, Object?> _authExtras(Object e, [Map<String, Object?>? more]) => {
+        'failureMode': authFailureMode(e),
+        'mirrored': _canMirrorReport,
+        ...?more,
+      };
+
   /// Check for and restore persisted credentials on app startup
   Future<bool> tryRestoreCredentials() async {
     if (kIsWeb) return false;
@@ -98,10 +138,13 @@ class AuthService extends ChangeNotifier {
         debugPrint('AuthService: Cleared unusable credentials');
       }
       // Crashlytics, not error_logs: the error_logs mirror needs a signed-in
-      // user, which by definition there isn't here. The `code` and
-      // `details` carry the renewal's underlying cause, which is what tells
-      // a transient failure apart from a revoked token.
-      ErrorReporter.report(e, st, area: 'auth', operation: 'restoreCredentials', extras: {
+      // user, which by definition there isn't here — `reportPreAuth` is what
+      // enforces that (plain `report` would POST the mirror, collect a 401
+      // and drop the event). The `code` and `details` carry the renewal's
+      // underlying cause, which is what tells a transient failure apart from
+      // a revoked token.
+      ErrorReporter.reportPreAuth(e, st, area: 'auth', operation: 'restoreCredentials', extras: {
+        'failureMode': authFailureMode(e),
         'code': e.code,
         'renewFailed': e.isTokenRenewFailed,
         'noRefreshToken': e.isNoRefreshTokenFound,
@@ -111,7 +154,13 @@ class AuthService extends ChangeNotifier {
       });
     } catch (e, st) {
       debugPrint('AuthService.tryRestoreCredentials error: $e');
-      ErrorReporter.report(e, st, area: 'auth', operation: 'restoreCredentials');
+      // Pre-auth by construction: restore is what would have produced the
+      // token the mirror needs. Anything reaching here is a non-Auth0
+      // failure — a plugin channel error, a Keychain fault — which
+      // `authFailureMode` separates from the SDK's own error codes.
+      ErrorReporter.reportPreAuth(e, st, area: 'auth', operation: 'restoreCredentials', extras: {
+        'failureMode': authFailureMode(e),
+      });
     }
     return false;
   }
@@ -201,8 +250,20 @@ class AuthService extends ChangeNotifier {
           debugPrint('Stored token from onLoad');
           notifyListeners();
         }
-      } catch (e) {
+      } catch (e, st) {
         debugPrint('Auth init error: $e');
+        // The web redirect callback failing leaves the user on a blank
+        // post-login screen with no session and no trace. Pre-auth: onLoad
+        // IS the step that produces the token.
+        //
+        // Crashlytics is disabled on web (no platform implementation), so
+        // today this call only debugPrints under the suppression branch —
+        // it is still the right call site, and it is what a web sink would
+        // pick up the day one exists. Leo's reports are iOS, where it does
+        // reach Crashlytics via the native path below.
+        ErrorReporter.reportPreAuth(e, st, area: 'auth', operation: 'initializeWeb', extras: {
+          'failureMode': authFailureMode(e),
+        });
       }
     } else {
       // Native: try to restore persisted credentials
@@ -265,12 +326,17 @@ class AuthService extends ChangeNotifier {
       // account-linked message unreachable from the day it was written
       // (a2aa52cb). Report it, then let the caller show the right message.
       debugPrint('Login error: $e');
-      ErrorReporter.report(
+      // Pre-auth: a failed login is precisely the state where no token
+      // exists to authenticate the error_logs mirror with.
+      ErrorReporter.reportPreAuth(
         e,
         st,
         area: 'auth',
         operation: 'login',
-        extras: {'connection': connection ?? 'universal'},
+        extras: {
+          'failureMode': authFailureMode(e),
+          'connection': connection ?? 'universal',
+        },
       );
       rethrow;
     }
@@ -337,16 +403,43 @@ class AuthService extends ChangeNotifier {
       if (isUserCancelled) {
         debugPrint('AuthService: logout dismissed by user');
       } else {
-        ErrorReporter.report(e, st, area: 'auth', operation: 'logout');
+        ErrorReporter.report(e, st,
+            area: 'auth',
+            operation: 'logout',
+            extras: _authExtras(e),
+            mirror: _canMirrorReport);
       }
-      // Still clear persisted credentials on error
-      if (!kIsWeb && _auth0 != null) {
-        try {
-          await _auth0!.credentialsManager.clearCredentials();
-        } catch (_) {}
+      try {
+        // Still clear persisted credentials on error — unless the failure
+        // we are handling IS that clear, in which case retrying it just
+        // produces a second identical report for one incident.
+        final clearAlreadyFailed = e is CredentialsManagerException;
+        if (!kIsWeb && _auth0 != null && !clearAlreadyFailed) {
+          try {
+            await _auth0!.credentialsManager.clearCredentials();
+          } catch (e2, st2) {
+            // A clear that fails here leaves credentials on the device
+            // after the app has told the user they are logged out — a real
+            // defect (next launch silently restores the session), and one
+            // that was invisible while this catch was empty. Reported, not
+            // rethrown: the logout must still finish clearing in-memory
+            // state.
+            ErrorReporter.report(e2, st2,
+                area: 'auth',
+                operation: 'logout.clearCredentials',
+                extras: _authExtras(e2),
+                mirror: _canMirrorReport);
+          }
+        }
+      } finally {
+        // In a finally because this is the part that must happen. Reporting
+        // stringifies the error and touches the mirror; if any of that
+        // threw, the old shape skipped these two lines and left the app
+        // with _isLoading true and a live session — the exact outcome the
+        // catch exists to prevent.
+        _clearSessionState();
+        notifyListeners();
       }
-      _clearSessionState();
-      notifyListeners();
     }
   }
 
@@ -362,8 +455,16 @@ class AuthService extends ChangeNotifier {
         packageName: info.packageName,
         scheme: Environment.auth0Scheme,
       );
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('AuthService: could not derive expected returnTo: $e');
+      // Diagnostics-only, so this never blocks logout — but a silent failure
+      // here is why lgort1 had to re-derive the URL from vendored SDK
+      // sources instead of reading it off a device.
+      ErrorReporter.report(e, st,
+          area: 'auth',
+          operation: 'expectedReturnTo',
+          extras: _authExtras(e),
+          mirror: _canMirrorReport);
       return null;
     }
   }
@@ -434,7 +535,16 @@ class AuthService extends ChangeNotifier {
       debugPrint('Token refresh error: $e');
       // Reported: a failed renewal is what logs a user out early, and until
       // now it left no trace anywhere.
-      ErrorReporter.report(e, st, area: 'auth', operation: 'refreshToken');
+      // Sink chosen by whether the token on hand is still usable, not by
+      // call site: main.dart refreshes proactively inside the 5-minute
+      // buffer (mirror works), ApiClient refreshes after a 401 (mirror
+      // 401s). This is the failure that logs a user out mid-session — the
+      // exact shape behind "the login doesn't hold".
+      ErrorReporter.report(e, st,
+          area: 'auth',
+          operation: 'refreshToken',
+          extras: _authExtras(e),
+          mirror: _canMirrorReport);
       return false;
     }
   }
