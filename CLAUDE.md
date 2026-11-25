@@ -6,6 +6,45 @@
 
 Palateful is an NX monorepo with Python microservices (FastAPI) and Flutter mobile frontend. This is a kitchen management app with AI-powered recipe and ingredient features.
 
+## A UI change is not shipped until it is on a phone
+
+**Leo's standing priority (2026-11-25): for any user-facing UI change, the
+mobile release is the most important part — not the web deploy, not the green
+CI run.** Palateful is a phone app. `deploy-web` makes a change live on
+`palateful.app` within minutes of a merge to `main`, and that is genuinely
+useful, but it reaches nobody holding an iPhone. Treat "merged, CI green, web
+live" as **half** a UI change, and say so plainly rather than reporting it as
+shipped.
+
+What that means in practice:
+
+- **Every change under `app/lib/` owes a version bump — but the bump belongs
+  to the release that carries it, not necessarily to the phase's own PR.** The
+  `major.minor.patch+build` version in `app/pubspec.yaml` is what a native
+  release is cut from, so a UI change that never gets a bump can never reach a
+  device, and nothing in CI will tell you. A multi-phase workstream may defer
+  the bump to its final merge — that is deliberate, because touching
+  `app/pubspec.yaml` on `main` fires Xcode Cloud and a mid-workstream bump
+  spends a build (and an Apple review) on a half-built feature. What is never
+  OK is a UI change reaching `main` with no bump *planned*: say which release
+  carries it, and treat the `v*.*.*` tag as the proof it happened.
+- **A native release needs a `v*.*.*` tag.** `mobile-builds.yml` fires only on
+  such a tag (or manual dispatch) and uploads to the Play **internal** track;
+  `promote-android.yml` moves it onward. iOS goes out through
+  `bin/prod-ios-deploy` + Xcode Cloud, then Apple review. Neither is automatic
+  and both end with Leo — so when a UI change merges, say what still has to
+  happen for it to reach a device, and whose step each one is.
+- **Features that only exist on a phone are not done when web is green.** A
+  gesture, a camera path, a push notification or anything behind a device
+  permission cannot be exercised on web at all. For those, the native build is
+  not the last mile — it is the only mile.
+- **Check whether the native build currently works before promising a
+  release.** As of 2026-11-25 `flutter build apk --debug` fails on `main` for
+  pre-existing reasons (andbld1 in `DEBUG.md`), `mobile-builds.yml` has
+  never run, and the repo has no tags. Until that is fixed, no UI change can
+  reach an Android device regardless of version bumps.
+- Release runbook: `ANDROID.md`. Ops context: `docs/DEPLOYMENT.md`.
+
 ## Key References
 
 - **`docs/`** - Feature/design docs (MVP, import pipeline, shared shopping cart, calendar, invitations, search, recipe experience, deployment, eval). Source of truth for schema and endpoints is the code itself (`services/api/src/db/models/`, `services/api/src/routers/`).
