@@ -6,7 +6,7 @@ title: Request storage and the create endpoint
 from: plan/plan-1e84ad-2026-11-24T22:51-admin-request-intake.md
 workstream: _devx/workstreams/admin-request-intake
 phase: 1
-status: ready
+status: in-review
 owner: null
 branch: feat/dev-arq101
 blocked_by: []
@@ -36,3 +36,4 @@ Add the `dev_requests` table (every status and both source columns from day one)
 ## Status log
 
 - 2026-11-24T23:37 — emitted by `/devx-plan` RED stage for workstream 1e84ad (plan phase 1). Gate 4: PASS.
+- 2026-11-25T00:45 — implemented by hand (not through `/devx`; no Phase 4 parallel review — a `/code-review high` was run on the branch instead) on `feat/dev-arq101`, stacked on `feat/admin-request-workstream`. E-3 and E-5: EVAL-GREEN through their own wrappers (8/8, 12/12), both previously RED for their recorded reason (no table; POST not routed); each also proven to go RED again under a targeted mutation (no `extra=forbid`, wrong status, no admin guard, no normalization, NFC for NFKC, `""` for a null done-when, no length limit). E-6 passes against a real Postgres. `npx nx run api:test` locally with CI's env: 2748 passed, 100.00%. Migration applied, `alembic check` clean, downgraded and re-applied on a throwaway database. **Not verified: CI** — `ci.yml` and `devx-ci.yml` run only on PRs into `main`, so this stacked PR gets no CI run. E-1, E-2, E-4 stay RED for Phase 2's reason (scripts / `bin/prod-script` forwarding), no longer for a missing table.
