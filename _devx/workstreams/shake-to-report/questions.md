@@ -23,3 +23,27 @@
 - **Resolution:** plan/plan-f89791-2026-11-25T09:02-shake-to-report.md
 
 ---
+
+## Q-2: G-2 coverage
+
+- **Kind:** gate-concern
+- **Severity:** concern
+- **Blocks:** gate-design
+- **Origin:** devx gate coverage · _devx/workstreams/shake-to-report/design/agent.md
+- **Recommendation:** G-2 is ⚠️ partial (self-judged by the authoring session (no subagent tool). Mechanism and its physics are specified, but whether 2 g / 4 reversals hits 9 of 10 real shakes with 0 kitchen prompts is unproven until E-7 runs on hardware. The design says so.)
+- **Status:** open
+- **Resolution:** —
+
+---
+
+## Q-3: G-4 coverage
+
+- **Kind:** gate-concern
+- **Severity:** concern
+- **Blocks:** gate-design
+- **Origin:** devx gate coverage · _devx/workstreams/shake-to-report/design/agent.md
+- **Recommendation:** G-4 is ⚠️ partial (self-judged by the authoring session (no subagent tool). Depends on arq103's route reaching main (external). Until then admins get feedback by the route-exists check.)
+- **Status:** open
+- **Resolution:** —
+
+---
