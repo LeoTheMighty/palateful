@@ -1,0 +1,16 @@
+# envspell1 — exemptions from tools/environment-gate-check.sh.
+#
+# Format: file:lineno:fingerprint:rationale
+#
+# `fingerprint` is a distinctive substring of the exempted line. The check
+# fails loudly if the line no longer contains it, so an exemption cannot
+# drift onto code nobody reviewed — the line-number-only form silently
+# exempted whatever later landed on that line.
+#
+# Only for comparisons that NAME something (a log group, a bucket, a queue)
+# rather than GATE something. A gate belongs in utils/environment.py; if you
+# are adding a gate here, you are adding the bug back. Reviewer sign-off
+# required.
+
+services/api/src/api/v1/admin/get_logs.py:26:settings.environment != "dev":naming, not gating — maps the deployed `dev` environment onto the `prod` CloudWatch log group so the admin log viewer reads the right stream. No security or recording consequence; a wrong answer shows the wrong logs, loudly.
+libraries/utils/utils/constants.py:6:os.environ.get("ENVIRONMENT"):the single canonical read of the variable — a definition, not a comparison. Everything else imports `ENVIRONMENT` from here rather than reading the environment again.

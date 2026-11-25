@@ -173,6 +173,14 @@ jobs:
       - name: Absence-alert self-test (absal1 guard)
         run: bash tools/absence-alert-self-test.sh
 
+      # stptr1 — a rename sweep can only fix files that exist when it runs.
+      # A spec written afterwards from an older template carries a stale
+      # path, and because the file is new there is no conflict to raise, so
+      # it merges silently. Fails on a pointer to a migrated workstream
+      # artifact; exempts `## Status log` history and `evals/` outputs.
+      - name: No stale workstream pointers (stptr1 guard)
+        run: python3 tools/stale-pointer-check.py
+
       # Unconditional for the same reason: it reads every project.json, and
       # the failure it guards (covcomb1) only shows under `-t test
       # --parallel`, never when a target is run on its own.
@@ -391,6 +399,9 @@ jobs:
 
       - name: No cook-mode chat references (cmrc-2 grep guard)
         run: bash tools/no-cook-chat-check.sh
+
+      - name: No bare ENVIRONMENT comparisons (envspell1 grep guard)
+        run: bash tools/environment-gate-check.sh
 
       - name: No direct Image.network (ffm-11 grep guard)
         run: bash tools/image-network-check.sh
@@ -658,64 +669,19 @@ jobs:
       - name: Install Node dependencies
         run: yarn install --frozen-lockfile
 
+      # The definition of "this push deploys a new image" lives in
+      # tools/deploy-affected.sh, NOT here, because deploy-freshness.yml asks
+      # the same question of (running image .. main) to decide whether prod
+      # is overdue a deploy. Two copies of that answer is how the freeze
+      # check drifts into alarming over changes that never deploy (or, worse,
+      # sleeping through ones that should). Change what deploys THERE, and
+      # both workflows move together. The all-four-images matrix rationale
+      # moved there with the logic. tools/deploy-freshness-self-test.sh fails
+      # if this step stops calling the script or grows its own nx call.
       - name: Determine affected projects
         id: affected
         run: |
-          AFFECTED=$(npx nx show projects --affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }})
-          echo "Affected projects: $AFFECTED"
-          if echo "$AFFECTED" | grep -q "^api$"; then
-            echo "api=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "api=false" >> "$GITHUB_OUTPUT"
-          fi
-          if echo "$AFFECTED" | grep -q "^worker$"; then
-            echo "worker=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "worker=false" >> "$GITHUB_OUTPUT"
-          fi
-          if echo "$AFFECTED" | grep -q "^migrator$"; then
-            echo "migrator=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "migrator=false" >> "$GITHUB_OUTPUT"
-          fi
-          if echo "$AFFECTED" | grep -q "^parser$"; then
-            echo "parser=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "parser=false" >> "$GITHUB_OUTPUT"
-          fi
-          if echo "$AFFECTED" | grep -q "^terraform$"; then
-            echo "terraform=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "terraform=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          # Compose the deploy-images matrix. Two valid states:
-          #   - At least one service affected → build ALL FOUR services so
-          #     every task-def reference (`<repo>:<github.sha>`) exists in ECR.
-          #     This intentionally bloats CI for unaffected services to break
-          #     a cross-workflow race (see the resolve-tags comment below):
-          #     under parallel pushes, terraform-prod from one run can land
-          #     after another run's terraform-prod, leaving the ECS service
-          #     pointing at <unaffected-service>:<github.sha> from a workflow
-          #     whose deploy-images never pushed that tag. The cure is to
-          #     guarantee every push that deploys ANYTHING re-pushes ALL
-          #     four images under HEAD_SHA. NX/Docker layer caching makes
-          #     unaffected rebuilds cheap.
-          #   - No service affected (docs / app-only / pure infra) → empty
-          #     array. deploy-images / terraform-prod / deploy-services all
-          #     skip; the deploy lane is a no-op for this push.
-          deploy_anything=false
-          for s in api worker migrator parser; do
-            if echo "$AFFECTED" | grep -q "^$s\$"; then
-              deploy_anything=true
-              break
-            fi
-          done
-          if [ "$deploy_anything" = "true" ]; then
-            echo 'services_to_build=["api","worker","migrator","parser"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'services_to_build=[]' >> "$GITHUB_OUTPUT"
-          fi
+          bash tools/deploy-affected.sh "${{ needs.setup.outputs.nx_base }}" "${{ needs.setup.outputs.nx_head }}" >> "$GITHUB_OUTPUT"
 
   # All image tags are pinned to the workflow's HEAD SHA. Earlier versions
   # of this job read the currently-deployed image tag from the live ECS

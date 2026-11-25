@@ -26,6 +26,7 @@ agent = {path = "../../libraries/agent", develop = true}
 ruff = "^0.11"
 pytest = "^8.0"
 pytest-cov = "^6.0"
+pytest-html = "^4.0"
 
 [tool.poetry.scripts]
 eval = "src.main:cli"

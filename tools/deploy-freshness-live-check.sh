@@ -43,8 +43,8 @@
 #
 # Usage:
 #   bash tools/deploy-freshness-live-check.sh                    # real measurement
-#   bash tools/deploy-freshness-live-check.sh --synthetic-gap-days 8   # E-7 step 3
-#   bash tools/deploy-freshness-live-check.sh --synthetic-gap-days 1   # E-7 step 4
+#   bash tools/deploy-freshness-live-check.sh --synthetic-overdue-hours 4  # E-7 step 3
+#   bash tools/deploy-freshness-live-check.sh --synthetic-overdue-hours 0  # E-7 step 4
 #   bash tools/deploy-freshness-live-check.sh --simulate-newer-revision  # E-7 step 5
 #   bash tools/deploy-freshness-live-check.sh --verify-shim-assumptions  # E-7 step 5 fidelity
 #   bash tools/deploy-freshness-live-check.sh --verify-environment-gate  # E-7 step 6 (no wait)
@@ -71,7 +71,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$REPO_ROOT/.github/workflows/deploy-freshness.yml"
-STEP_NAME="Measure gap between running image and its commit date"
+STEP_NAME="Measure how long prod has been overdue a deploy"
 
 SYNTHETIC=""
 SIMULATE_NEWER=0
@@ -80,13 +80,13 @@ VERIFY_ENV_GATE=0
 VERIFY_SCHEDULE=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --synthetic-gap-days) SYNTHETIC="${2:-}"; shift 2 ;;
+    --synthetic-overdue-hours) SYNTHETIC="${2:-}"; shift 2 ;;
     --simulate-newer-revision) SIMULATE_NEWER=1; shift ;;
     --verify-shim-assumptions) VERIFY_ASSUMPTIONS=1; shift ;;
     --verify-environment-gate) VERIFY_ENV_GATE=1; shift ;;
     --verify-schedule-fires) VERIFY_SCHEDULE=1; shift ;;
     -h|--help) sed -n '2,68p' "${BASH_SOURCE[0]}"; exit 0 ;;
-    *) echo "usage: $0 [--synthetic-gap-days N] [--simulate-newer-revision] [--verify-shim-assumptions] [--verify-environment-gate] [--verify-schedule-fires]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--synthetic-overdue-hours N] [--simulate-newer-revision] [--verify-shim-assumptions] [--verify-environment-gate] [--verify-schedule-fires]" >&2; exit 2 ;;
   esac
 done
 
@@ -406,10 +406,10 @@ read_env() { sed -n "s/^  $1: *//p" "$WORKFLOW" | head -1; }
 AWS_REGION="$(read_env AWS_REGION)"
 CLUSTER="$(read_env CLUSTER)"
 SERVICE="$(read_env SERVICE)"
-MAX_GAP_DAYS="$(read_env MAX_GAP_DAYS)"
-[ -n "$AWS_REGION" ] && [ -n "$CLUSTER" ] && [ -n "$SERVICE" ] && [ -n "$MAX_GAP_DAYS" ] \
-  || { echo "FAIL: could not read AWS_REGION/CLUSTER/SERVICE/MAX_GAP_DAYS from the workflow env block" >&2; exit 2; }
-echo "workflow env: AWS_REGION=$AWS_REGION CLUSTER=$CLUSTER SERVICE=$SERVICE MAX_GAP_DAYS=$MAX_GAP_DAYS"
+MAX_OVERDUE_HOURS="$(read_env MAX_OVERDUE_HOURS)"
+[ -n "$AWS_REGION" ] && [ -n "$CLUSTER" ] && [ -n "$SERVICE" ] && [ -n "$MAX_OVERDUE_HOURS" ] \
+  || { echo "FAIL: could not read AWS_REGION/CLUSTER/SERVICE/MAX_OVERDUE_HOURS from the workflow env block" >&2; exit 2; }
+echo "workflow env: AWS_REGION=$AWS_REGION CLUSTER=$CLUSTER SERVICE=$SERVICE MAX_OVERDUE_HOURS=$MAX_OVERDUE_HOURS"
 echo
 
 if [ "$VERIFY_ASSUMPTIONS" -eq 1 ]; then
@@ -532,6 +532,13 @@ fi
 if [ -f "$REPO_ROOT/.git/shallow" ]; then
   echo "WARNING: shallow clone — the deployed SHA may be missing locally; run 'git fetch --unshallow'." >&2
 fi
+# The step measures against origin/main AS THIS CLONE LAST FETCHED IT. A stale
+# ref is a stale answer, in the green direction — so say which one this is.
+echo "measuring against local origin/main $(git -C "$REPO_ROOT" log -1 --format='%h %ci' origin/main 2>/dev/null || echo '(missing)') — run 'git fetch origin' first if that is old."
+# The step asks nx (via tools/deploy-affected.sh) what deploys. Without
+# node_modules it would fail with no verdict, which is honest but useless.
+[ -x "$REPO_ROOT/node_modules/.bin/nx" ] \
+  || { echo "FAIL: node_modules/.bin/nx missing — run 'yarn install --frozen-lockfile' first." >&2; exit 2; }
 
 # Runs the extracted step once. $1 = output file, $2 = script, $3 = PATH to use.
 # Echoes the exit status.
@@ -541,7 +548,8 @@ run_measure() {
   # leaves it flipped for its caller.
   ( cd "$REPO_ROOT" \
     && env PATH="$path" AWS_REGION="$AWS_REGION" CLUSTER="$CLUSTER" SERVICE="$SERVICE" \
-           MAX_GAP_DAYS="$MAX_GAP_DAYS" SYNTHETIC_GAP_DAYS="$SYNTHETIC" \
+           MAX_OVERDUE_HOURS="$MAX_OVERDUE_HOURS" SYNTHETIC_OVERDUE_HOURS="$SYNTHETIC" \
+           NX_DAEMON=false NX_NO_CLOUD=true \
        bash "$script" ) > "$out" 2>&1 || status=$?
   cat "$out"
   return "$status"
@@ -670,8 +678,8 @@ STATUS=$?
 set -e
 
 echo
-echo "measure step exit: $STATUS  ($([ "$STATUS" -eq 0 ] && echo 'PASS — fresh' || echo 'FAIL — stale or undatable'))"
+echo "measure step exit: $STATUS  ($([ "$STATUS" -eq 0 ] && echo 'PASS — not overdue' || echo 'FAIL — overdue, undatable, or no verdict'))"
 if [ -n "$SYNTHETIC" ]; then
-  echo "NOTE: synthetic gap ${SYNTHETIC}d was substituted — this exercised the threshold, NOT prod's real age."
+  echo "NOTE: synthetic ${SYNTHETIC}h overdue was substituted — this exercised the threshold, NOT prod."
 fi
 exit "$STATUS"
