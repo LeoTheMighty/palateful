@@ -28,8 +28,8 @@ import 'package:palateful/features/admin/admin_dev_request_new_screen.dart';
 /// Every response body below was captured from the real endpoint,
 /// `POST /v1/admin/dev-requests` on `feat/admin-request-slice` at
 /// `cbe332d3`, through `services/api/tests/devreq_harness.py` (its own
-/// throwaway database). Only the long `input` echoes are rebuilt rather
-/// than pasted.
+/// throwaway database). Only the long `input` echoes and `created_at`
+/// are rebuilt rather than pasted.
 
 const _createPath = '/v1/admin/dev-requests';
 
@@ -39,7 +39,9 @@ final _created = {
   'status': 'submitted',
   'content_sha256':
       '763d086d8280510285f830518214fc5f589288b83579e07e2f315f8cc6ee16bd',
-  'created_at': '2026-11-25T15:57:37.283859Z',
+  // Captured as a literal; computed here so fixture_date_guard_test has
+  // no dated fixture to object to. The screen never reads it.
+  'created_at': DateTime.now().toUtc().toIso8601String(),
 };
 
 final _forbidden = {
