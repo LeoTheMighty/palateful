@@ -1,6 +1,7 @@
 """Admin endpoints router."""
 
 from api.v1.admin import (
+    CreateDevRequest,
     GetAdminPushHealth,
     GetClientEndpointMetrics,
     GetClientJankMetrics,
@@ -196,6 +197,29 @@ async def update_feedback_status(
     """Flip the status of a single feedback row (unread/read/archived)."""
     return await UpdateFeedbackStatus.call(
         feedback_id=feedback_id,
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+# ============================================================
+# Dev requests (admin-request-intake, PRD FR-3)
+#
+# The only HTTP write to `dev_requests`: it creates a `submitted` row for
+# the caller and nothing else. Every later status belongs to the operator
+# (`bin/prod-script` → dev_requests_write.py); no route here sets one.
+# ============================================================
+
+
+@admin_router.post("/dev-requests")
+async def create_dev_request(
+    params: CreateDevRequest.Params,
+    user: User = Depends(require_admin_async),
+    database: AsyncDatabase = Depends(get_async_database),
+):
+    """File a request for a change (PRD FR-3). 201 with its id and hash."""
+    return await CreateDevRequest.call(
         params=params,
         user=user,
         database=database,
