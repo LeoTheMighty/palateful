@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-22T21:35:00-06:00
 title: probe_sync has neither a total timeout nor the single-flight cache its async twin has
 from: dev/dev-selfheal1-2026-09-20T11:45-503-only-when-a-restart-can-fix-it.md
-status: ready
+status: done
 owner: null
 branch: null
 ---
@@ -87,3 +87,14 @@ comment, is what keeps that true.
 - 2026-09-22T22:25 — claimed by palateful-98. AC #3 resolved to the
   documented-absence branch with 3b (filer) and 0a (wrote both probe
   paths); rationale + measurements folded into the body above.
+- 2026-09-23 — merged via PR #61 (squash → 51b321e0); deploy run 35806423249 all legs success; api + worker both 1/1 ACTIVE on 51b321e0; `/v1/health` unchanged at `ok`/`OK`; no `statement timeout` / `QueryCanceled` / `57014` / fail-open lines in 150 log lines per service.
+- 2026-09-23 — **FOR rsh107's OWNER, measured, do not re-derive.** Nothing in prod calls `probe_sync` yet, so the deploy alone proves only "no regression". Ran it inside the live prod API task (`bin/prod-script`, read-only, one connection):
+
+      connect_args: {'connect_timeout': 2, 'options': '-c statement_timeout=500',
+                     'keepalives': 1, 'keepalives_idle': 3,
+                     'keepalives_interval': 2, 'keepalives_count': 3}
+      probe_sync -> OK in 0.028s (statement budget 500ms)
+
+  **28ms against a 500ms budget — ~18x headroom against production RDS, measured 2026-09-23.** That is the number to size `healthCheck.timeout` from. A budget too tight for the real database would have surfaced here rather than during the rsh109 rotation drill.
+- 2026-09-23 — **spec premise corrected during implementation:** `statement_timeout` is NOT the sync answer to `wait_for`. It is server-enforced, so against the half-open TCP after an RDS failover — the case this story exists to close — nothing is alive to enforce it and the client still blocks in `recv()`. Three settings cover three distinct hangs: `connect_timeout` (establishment), `statement_timeout` (slow-but-alive query), keepalives (dead peer, ~9s worst case). The only true hard deadline remains the container's `healthCheck.timeout`, which belongs to rsh107 — stated in the module docstring so nobody believes this closed more than it did.
+- 2026-09-23 — AC #3 shipped as the documented absence plus `test_sync_probe_interval_assumption_holds` (mutation-verified: fails at `interval = 10`, passes with no health check). `SYNC_PROBE_MIN_CHECK_INTERVAL_S = 30.0` is the constant rsh107's interval must respect — a request to its owner, not a fait accompli.

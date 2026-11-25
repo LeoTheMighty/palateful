@@ -31,7 +31,7 @@ app/web-landing/index.html:145:negation — meta-quote "'upgrade.'"
 
 # --- pos-2 in-app surfaces ---------------------------------------------
 app/lib/features/onboarding/onboarding_welcome_screen.dart:151:negation — canonical reassurance line
-app/lib/features/profile/profile_screen.dart:865:negation — Profile→About→Why-we're-free tile subtitle
+app/lib/features/profile/profile_screen.dart:872:negation — Profile→About→Why-we're-free tile subtitle
 app/lib/features/about/why_we_are_free_page.dart:91:negation — "Most recipe apps charge a subscription. Palateful doesn't."
 app/lib/features/about/why_we_are_free_page.dart:99:negation — "feature behind a paywall" in Why-we're-free body
 app/lib/features/about/why_we_are_free_page.dart:107:negation — "premium tier sitting behind a coming-soon door"

@@ -1,7 +1,19 @@
 # E-7 — Deploy freeze becomes visible
 
 - **Priority:** P2 · **Validation type:** human · **Phase:** 8 (FR-6)
-- **Status:** RED — observation in progress, **one step owed**. Steps 1, 2, 3,
+- **Status:** **GREEN — every step of the protocol is observed (closed
+  2026-09-20).** The last owed step (6b) closed when the check measured prod
+  for the first time in its existence: run 35528125176 fired unattended at
+  18:09:04Z, authenticated, and reported `Gap: 51 day(s)` against a 7-day
+  threshold, agreeing with a local live-check and with `git log` on the
+  number, the revision (`:63`) and the commit (`848311af`). The 50 scheduled
+  runs before it all died in `configure-aws-credentials` for want of
+  `environment: production` — so this is the first verdict the workflow has
+  ever been able to produce. **The check is now expected to report red on
+  every firing** until a `services/` change deploys; that is the freeze being
+  visible, not a broken check. See "Step 6b" below.
+- **Superseded history follows.** Previously: RED — observation in progress,
+  **one step owed**. Steps 1, 2, 3,
   4 and 7 are now **fully observed**, including the mechanism: three real
   `workflow_dispatch` runs of the fixed workflow executed in GitHub Actions
   (runs 30652052889 / 30652140468 / 30652190943), with environment-scoped AWS
@@ -564,6 +576,75 @@ survive drift that has already been measured at ~8h. And a narrowing that
 reduces real coverage (weekday-only) is refused rather than parsed
 optimistically — an unparseable cron must never be read as "daily".
 
+### Step 6b: the check measured prod for the first time (2026-09-20)
+
+**The headline is not the verdict. It is that a verdict was possible at all.**
+
+`deploy-freshness.yml` was written on 2026-07-31 and scheduled continuously
+from 2026-08-01. Its first **50** scheduled runs all died in
+`configure-aws-credentials` with `Credentials could not be loaded`, because
+`main`'s copy declared no `environment: production` and the AWS secrets exist
+only at that scope. For 50 consecutive days the freeze detector ran, failed,
+and measured nothing. **Run 51 is the first time in the workflow's existence
+that it reached ECS.** The difference was one line, landed as PR #25.
+
+Run [35528125176](https://github.com/LeoTheMighty/palateful/actions/runs/35528125176),
+fired unattended at **2026-09-20T18:09:04Z**:
+
+```
+Running task definition: arn:aws:ecs:us-east-1:592349850338:task-definition/palateful-api-prod:63
+Deployed image:  .../palateful/api:848311af83a2025b69bc6b8813d8af591ea1930c
+Deployed commit: 848311af 2026-07-31 10:24:08 -0600 chore: claim 7c5cf2 for /devx
+Gap: 51 day(s); threshold: 7 day(s).
+::error::Prod is running an image 51 days old (threshold 7d) — a deploy freeze
+         is in progress.
+Process completed with exit code 1.
+```
+
+**Judged on the `Gap:` line, not the exit status** — three independent legs,
+agreeing on the number, the revision *and* the commit:
+
+| Leg | Gap | Revision | Commit |
+|---|---|---|---|
+| The scheduled run, in GitHub Actions | 51d | `:63` | `848311af` |
+| `deploy-freshness-live-check.sh`, locally, ~1h earlier | 51d | `:63` | `848311af` |
+| `git log -1 848311af` → 2026-07-31 10:24:08 -0600 | 51d (floor) | — | — |
+
+"Red with the right number, revision and commit" is a materially stronger
+claim than "red", and it is what rules out the failure mode this step exists
+to catch: a check that authenticates and then measures the wrong thing.
+
+**Firing time:** 18:09:04Z, i.e. **3.1h drift** past the declared `0 15 * * *`
+— inside the 15:27Z–20:44Z band measured over the first 50 runs, and further
+confirmation that the declared hour is not a checkable property.
+
+#### Prediction for 2026-09-21, recorded so it is falsifiable
+
+The second slot (`0 3 * * *`) had not yet come round when this run fired, so
+the doubled cadence is still unobserved. **2026-09-21 should show two
+`event: schedule` runs of this workflow, one near 03:00Z and one near 15:00Z,
+each with drift of up to a few hours, and the longest silence between
+firings should drop from the 18.3–31.9h measured on one slot to roughly
+12h ± drift.** If only one run appears, the second slot did not take and the
+≤12h guard is asserting a property the scheduler is not delivering — which
+would be a finding, not a nuisance.
+
+#### This check will now be red every day, and that is correct
+
+Prod is genuinely stale. The API has run `:63` since 2026-07-31, and the four
+PRs merged on 2026-09-20 did not change that: `ci.yml` derives
+`services_to_build` from the diff, and all four touched only `app/`, `tools/`,
+`.github/` and docs, so every ECS deploy leg skipped. Merging them unfroze the
+**pipeline**, not prod.
+
+So the expected steady state from here is a red run on every firing until a
+`services/` change actually deploys. The alarm working and the building being
+on fire are both true at once. Whoever meets that red first will be tempted to
+treat the new check as broken — the triage note lives in `MANUAL.md` (E-7 step
+6b) and in the workflow file's own header, because someone woken by a red cron
+opens the workflow, not a workstream eval. The fix is `rsh102` reaching prod
+before the 2026-10-29 rotation.
+
 ## Accepted cost
 
 The check shares its fate with the CI system whose silent breakage it exists
@@ -573,7 +654,18 @@ been skipped throughout this very incident.
 
 ## Result
 
-- **Verdict:** _all seven steps measured; pending one post-merge confirmation._
+- **Verdict:** **PASS — all seven steps observed, nothing owed.** Step 6b
+  closed 2026-09-20 (run 35528125176): the check fired unattended, reached
+  ECS, and reported `Gap: 51 day(s)` / exit 1, cross-checked three ways on
+  the number, revision and commit. **The significant fact is that this was
+  the workflow's first successful measurement ever** — its previous 50
+  scheduled runs died in `configure-aws-credentials`, so E-7's mechanism had
+  never once been exercised end to end against prod. It has now.
+  Steady state from here is red on every firing until a `services/` change
+  deploys (`rsh102`, due before the 2026-10-29 rotation); triage guidance is
+  in `MANUAL.md` and the workflow header rather than here, because that is
+  where someone debugging a red cron will be.
+- **Superseded.** Previously: _all seven steps measured; pending one post-merge confirmation._
   Step 6a closed on 2026-09-20 with 50 real unattended firings of `main`'s copy
   (0 approval-gated), which also proved the detector has failed on **every one
   of them** for want of `environment: production`. What remains is not an

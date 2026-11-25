@@ -11,7 +11,14 @@ include: package:flutter_lints/flutter.yaml
 
 analyzer:
   exclude:
-    - integration_test/**
+    # `integration_test/**` was excluded here while those 8 files were also
+    # never executed (`flutter test` does not collect `integration_test/`,
+    # and ci.yml excludes the `e2e` nx project). Neither run nor analysed,
+    # they could rot against API changes with nothing anywhere complaining.
+    # Analysing them costs nothing and at least proves they still compile.
+    #
+    # `test_driver/**` stays excluded: it uses `package:integration_test`
+    # in a way the analyzer flags under this config (see f28a2e1c).
     - test_driver/**
 
 linter:

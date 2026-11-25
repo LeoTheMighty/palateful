@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-20T10:35:00-06:00
 title: Drain the 29-file hardcoded-fixture-date baseline before the next one freezes deploys
 from: debug/debug-imptb1-2026-07-27T18:53-imports-tab-widget-tests-red-on-main.md
-status: in-progress
+status: done
 owner: /devx-fxfuse
 branch: feat/dev-fxfuse
 ---
@@ -186,4 +186,17 @@ diagnosis has now been paid for three times.
   added tests), `tool/time_travel_check.sh` **1688 passed / exit 0** shifting
   134 ISO + 64 constructor dates across 72 files. Identical shift counts to
   the pre-rebase run, so main's new tests carry no fixture dates of their own.
+- 2026-09-23 — merged via PR #54 (squash → `37d02bb0`), base `1bab0aa8`, green
+  at `e579f0d3`: `CI & Deploy` + `devx-ci` both completed/success, no check in
+  FAILURE/ERROR/CANCELLED, `mergeStateStatus: CLEAN`. Final local numbers on
+  that tree: `flutter test` 1688/exit 0, `tool/time_travel_check.sh --days 406`
+  1688/exit 0, guard 23 tests green.
+- 2026-09-23 — **open loop, not a closed one**: the nightly
+  (`.github/workflows/fixture-time-travel.yml`, 09:12 UTC) has never run in
+  CI. Its negative-control step has only ever been proven on a laptop, so
+  until the first run reports, the claim "the check still bites in CI" is
+  untested. Verification filed in MANUAL.md. **If that step fails, the harness
+  has stopped detecting a frozen fixture — it does NOT mean a fixture rotted,
+  and the two want opposite responses** (fix the harness vs. anchor a
+  fixture); the job prints `::error::` lines saying so.
 
