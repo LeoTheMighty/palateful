@@ -245,6 +245,15 @@ module "ecs" {
   # tasks. Empty disables (pre-pim-5 behavior); populated enables the
   # three-tier Auth0 JWKS cache (in-memory → Redis → Auth0).
   redis_url_ssm_parameter_arn = module.elasticache.redis_url_ssm_parameter_arn
+
+  # shk101 (2026-11-25): who shake-to-report admits — "off", "admins" or
+  # "everyone". THIS LINE IS THE SWITCH: edit it and merge to main, and the
+  # deploy that follows sets SHAKE_REPORT_RING on the API task definition;
+  # clients see it within 5 minutes. "admins" is Leo's chosen first value
+  # (the dogfood ring); moving to "everyone" waits on the E-7 device
+  # protocol. A console-made revision is only an emergency bridge: the next
+  # deploy replaces it with whatever this line says.
+  shake_report_ring = "admins"
 }
 
 # ─── Outputs ───

@@ -80,6 +80,11 @@ class FeedbackContext(BaseModel):
     platform: Literal["ios", "android", "web"] | None = None
     route: str | None = Field(default=None, max_length=512)
     recipe_id: uuid.UUID | None = None
+    # How the sheet was opened (shk101, FR-13): Profile's tile or a shake.
+    # Contract is one-way once a client release sends it — the sheet
+    # re-queues on any error, so removing this key after such a release
+    # turns every queued submission into a 422 that retries forever.
+    trigger: Literal["profile", "shake"] | None = None
 
 
 class CreateUserFeedback(AsyncEndpoint):

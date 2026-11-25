@@ -313,6 +313,19 @@ review lag measured in days).
 5. Within 5 min every client refreshes its flag cache and stops enqueuing.
 6. Row-rate drop visible via `psql -c "SELECT count(*) FROM client_latencies WHERE created_at > now() - interval '5 minutes';"` — should trend to ~0.
 
+> **A console flip lasts only until the next deploy.** Terraform owns the
+> API task definition's `environment` list
+> (`terraform/modules/ecs/main.tf`, the `api` container) and the service's
+> `task_definition` (no `ignore_changes`). The next `terraform-prod` apply —
+> every merge to `main` that affects `services/`, `libraries/` or
+> `terraform/` — points the service back at terraform's revision, which
+> does not carry the console-set variable, and the kill-switch silently
+> turns back on. The `CLIENT_LATENCY_*` variables are not in terraform at
+> all today, so there is no durable route for this switch yet: after an
+> emergency flip, hold merges to `main` or re-flip after each deploy, and
+> check with `curl -s https://api.palateful.app/v1/flags/perf`. The shake
+> ring below is terraform-managed for exactly this reason.
+
 ### Re-enable
 
 Reverse step 3 (`CLIENT_LATENCY_INGEST_ENABLED=true`, sampling back to `1.0`) and redeploy. Expect up to 5 min before field clients refresh.
@@ -323,6 +336,76 @@ Reverse step 3 (`CLIENT_LATENCY_INGEST_ENABLED=true`, sampling back to `1.0`) an
 - Router: `services/api/src/routers/v1/flags_router.py`
 - Config: `services/api/src/config.py` (`client_latency_ingest_enabled`, `client_latency_sampling_rate`)
 - Tests: `services/api/tests/test_perf_flags.py`
+
+---
+
+## Shake-to-report ring (`shk101`)
+
+A **product** flag that rides the perf flags endpoint: it reuses the
+fetch, 500 ms timeout and 5-minute refresh the client already runs for the
+latency switch. Workstream: `_devx/workstreams/shake-to-report/`.
+
+### Contract
+
+- `GET /v1/flags/perf` also returns `shake_report`: `"off"` (no one),
+  `"admins"` (only admins) or `"everyone"` (every eligible user).
+- Unlike the latency flags, the client (from shk104; no released client
+  reads the ring before that) does **not** fail open on this one: it keeps
+  the last ring it received on the device and assumes `admins` before it
+  has ever received one, so a failed fetch never widens the rollout.
+- `POST /v1/users/me/feedback` accepts `context.trigger` of `"profile"` or
+  `"shake"` (or none); anything else is a 422. Query shaken feedback with
+  `context->>'trigger' = 'shake'`.
+
+### The switch is a terraform line
+
+| Where | What |
+|---|---|
+| `terraform/environments/prod/main.tf`, `module "ecs"` | `shake_report_ring = "admins"` — **this is the switch** |
+| `terraform/modules/ecs/main.tf` | `variable "shake_report_ring"` (default `admins`, validated to the three values) → `SHAKE_REPORT_RING` in the `api` container's environment |
+| `services/api/src/config.py` | `shake_report_ring`; any other value fails API startup |
+
+First value is `admins` (Leo's call — the dogfood ring). Moving to
+`everyone` waits on the E-7 device protocol.
+
+### Runbook: change the ring
+
+1. Edit `shake_report_ring` in `terraform/environments/prod/main.tf`.
+   Exactly `off`, `admins` or `everyone`, lower-case.
+2. Merge to `main`. A terraform-only change still applies: `terraform-prod`
+   runs against the image tags production is already running (`tfgate1`).
+   The prod plan should show one change: the API task definition's
+   `SHAKE_REPORT_RING` value, and the service moving to the new revision.
+3. After the deploy finishes, confirm:
+   `curl -s https://api.palateful.app/v1/flags/perf` → `"shake_report": "<new value>"`.
+4. Online clients pick it up on their next 5-minute flags refresh, or at
+   their next cold start.
+
+A value outside the three fails `terraform plan` (the variable's
+`validation` block), so a typo stops the deploy before it registers a
+revision. If it ever got past that, the API would refuse to start on it —
+which is why the validation exists.
+
+### Emergency: faster than a merge
+
+Setting `SHAKE_REPORT_RING=off` on a console-made task-definition revision
+works within minutes, but **it is undone by the next deploy**: terraform
+points the service back at its own revision, with whatever the prod
+`main.tf` line says. Make the same change in terraform straight after, or
+the ring re-opens on the next merge to `main`.
+
+### Rollback caveat
+
+Once a client release sends `context.trigger` (shk102 onward), removing
+`trigger` from the server turns every such submission into a 422 that the
+sheet re-queues forever. Roll back by shipping a client without `trigger`
+first, then the server.
+
+### Reference
+
+- Endpoint: `services/api/src/api/v1/flags/get_perf_flags.py`
+- Feedback context: `services/api/src/api/v1/user/create_user_feedback.py` (`FeedbackContext.trigger`)
+- Tests: `services/api/tests/test_shake_flags_and_trigger.py` (E-6)
 
 ---
 
