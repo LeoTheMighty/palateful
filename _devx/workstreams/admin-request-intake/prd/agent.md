@@ -72,11 +72,13 @@ protection rules, checked with
 merge is literally the deploy, with nothing behind it, and MERGE is the
 only human checkpoint between agent work and production.
 
-**The backend is quiet.** The last commit touching `services/`,
-`libraries/` or `terraform/` is `cd6a3c3e` (2026-09-24); none of the 14
-commits on `main` since then touched them. A fault intake will mostly
-report on code that has not changed in two months, so it is sized for a
-trickle of new signatures, not for a busy deploy pipeline.
+**The backend moves in bursts.** 23 of the 127 commits on `main` in the
+last 70 days touched `services/`, `libraries/` or `terraform/`; the last of
+them is `cd6a3c3e` (2026-09-24), and none of the 24 commits since
+(`git rev-list cd6a3c3e..origin/main` at `9faa8c63`) did. A fault intake
+will mostly report on code that has not changed in two months, then see a
+spike of new signatures when a burst deploys. It is sized for that: a
+trickle by default, and a hard cap per poll for the spike.
 
 ## Goals
 
@@ -319,9 +321,16 @@ ISO-8601 UTC. The record carries **no** `title`, `body`, `done_when`,
 submitter email or name, and neither stdout nor stderr carries any of them
 anywhere in this mode.
 
-Both scripts read `DATABASE_URL` and build their own engine, as
-`services/api/scripts/inspect_user_push.py` does, so they run the same way
-standalone and under `bin/prod-script`.
+Both scripts take their database URL from `utils.constants.DATABASE_URL`
+and build their own engine, so they run the same way standalone and under
+`bin/prod-script`. They must not read `os.environ["DATABASE_URL"]`: prod
+tasks set `DB_HOST`/`DB_USERNAME`/`DB_PASSWORD` instead
+(`terraform/modules/ecs/main.tf:291-306`), which `utils.constants` composes
+(`libraries/utils/utils/constants.py:19-42`). Because the bridge runs the
+`origin/main` copy of a script against whatever image is deployed, the
+scripts import nothing beyond the standard library, SQLAlchemy and
+`utils.constants`, so a script can never depend on library code the
+running image lacks.
 
 ### FR-8: Read script — `adopt` [slice]
 
@@ -450,9 +459,12 @@ slice has no list screen.
 
 `GET /v1/admin/dev-requests` (admin; status filter; newest first; each item
 carries id, id8, title, status, status_detail, the submitter's display name,
-created_at, synced_at) and `POST /v1/admin/dev-requests/{id}/cancel`
-(submitter only; `submitted`/`received` → `withdrawn`; any other state →
-409). These are the only other routes that touch `dev_requests`.
+created_at, synced_at, and no `body` or `done_when`),
+`GET /v1/admin/dev-requests/{id}` (admin; the one route that returns
+`body` and `done_when`, for FR-16's detail screen) and
+`POST /v1/admin/dev-requests/{id}/cancel` (submitter only;
+`submitted`/`received` → `withdrawn`; any other state → 409). With FR-3
+these are the only routes that touch `dev_requests`.
 
 ### FR-16: Panel list and detail [widening]
 
@@ -562,6 +574,15 @@ The router consumes `poll` (each row's `workstream`, `source`,
 compare-and-set on `workstream` (`conflict` when the row is elsewhere),
 validates both slugs, leaves `status` alone, and writes one audit row. It
 is the only write routing needs from Palateful.
+
+The router needs only that a split or combine ends in a **partition**: a
+list of `(row id, from workstream, to workstream)` the bridge applies with
+one `move` per row. Who produces the partition does not matter here. If
+devx's split lands as "prepare both children, inherit no gate verdict, a
+human assigns the expectations", the partition comes from Leo instead of
+the router, and Palateful's side is unchanged. The cost of that outcome is
+attendance, not correctness: every split waits on Leo, and both children
+re-run their gates.
 
 ## Bridge contract
 

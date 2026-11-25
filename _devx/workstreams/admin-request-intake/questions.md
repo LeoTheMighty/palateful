@@ -35,3 +35,15 @@
 - **Resolution:** plan/plan-1e84ad-2026-11-24T22:51-admin-request-intake.md
 
 ---
+
+## Q-3: hygiene duplication · design/agent.md § Constraints and § Verification harness
+
+- **Kind:** gate-concern
+- **Severity:** concern
+- **Blocks:** gate-design
+- **Origin:** devx gate coverage · _devx/workstreams/admin-request-intake/design/agent.md
+- **Recommendation:** the coverage-exit fact is stated in Constraints and referred to again in the harness; the second mention is a pointer, kept short
+- **Status:** resolved
+- **Resolution:** _devx/workstreams/admin-request-intake/decisions/2026-11-24-design-verify.md
+
+---

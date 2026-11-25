@@ -28,7 +28,8 @@
   recomputed hash equals the create response's `content_sha256`; exactly 2
   `DevRequestTransition` audit rows; 0 rows written by anything other than
   the endpoint and the write script; a no-argument `bin/prod-script` call
-  still runs (FR-5 backward compatibility).
+  still runs (FR-5 backward compatibility); both scripts import only the
+  standard library, SQLAlchemy and `utils.constants`.
 - **Measure:** `bin/prod-script services/api/scripts/dev_requests_read.py metrics` · window: 2026-11-24 → 2026-12-31 (G-1: `by_status.accepted` ≥ 1)
 - **Verified by:** `_devx/workstreams/admin-request-intake/evals/E-1_full_path.sh`
 
