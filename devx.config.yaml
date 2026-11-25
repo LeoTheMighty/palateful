@@ -237,6 +237,7 @@ observability:
     endpoint: null
     anonymized: true
 engine:
+  docs_layout: workstream # set 2026-11-24 (admin-request-intake): matches the two workstreams already on disk
   workstreams_root: _devx/workstreams
   archive_root: _devx/archive
   code_citation_hints: []

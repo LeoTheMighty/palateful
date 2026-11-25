@@ -1,5 +1,6 @@
 """Admin endpoint implementations."""
 
+from api.v1.admin.create_dev_request import CreateDevRequest
 from api.v1.admin.get_client_metrics import (
     GetClientEndpointMetrics,
     GetClientJankMetrics,
@@ -20,6 +21,7 @@ from api.v1.admin.update_feedback_status import UpdateFeedbackStatus
 from api.v1.admin.update_user_admin import UpdateUserAdmin
 
 __all__ = [
+    "CreateDevRequest",
     "GetAdminPushHealth",
     "GetClientEndpointMetrics",
     "GetClientJankMetrics",

@@ -1115,6 +1115,26 @@ class ApiClient {
     );
   }
 
+  /// File one dev request (admin-request-intake, PRD FR-3). 201 →
+  /// `{id, id8, status, content_sha256, created_at}`.
+  ///
+  /// The text goes as typed: the server normalizes it, checks its lengths
+  /// and hashes it (FR-2), and the client copies none of that. `doneWhen`
+  /// null leaves the key out, which the server stores as null. `priority`
+  /// is accepted by the endpoint but is not part of the panel form
+  /// (FR-14), so it is not sent.
+  Future<Response> createDevRequest({
+    required String title,
+    required String body,
+    String? doneWhen,
+  }) {
+    return _dio.post('/v1/admin/dev-requests', data: {
+      'title': title,
+      'body': body,
+      if (doneWhen != null) 'done_when': doneWhen,
+    });
+  }
+
   Future<Response> getAdminStats() {
     return _dio.get('/v1/admin/stats');
   }

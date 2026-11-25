@@ -54,6 +54,7 @@ import '../../features/invitations/invite_link_preview_screen.dart';
 import '../../features/meals/public_meal_screen.dart';
 import '../../features/recipes/public_recipe_screen.dart';
 import '../../features/admin/admin_dashboard_screen.dart';
+import '../../features/admin/admin_dev_request_new_screen.dart';
 import '../../features/admin/admin_feedback_screen.dart';
 import '../../features/admin/admin_logs_screen.dart';
 import '../../features/admin/admin_metrics_screen.dart';
@@ -671,6 +672,15 @@ GoRouter get appRouter {
         path: '/admin/metrics',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AdminMetricsScreen(),
+      ),
+      // admin-request-intake FR-14. Top-level like its siblings, so a push
+      // from anywhere (the dashboard tile, or a later trigger) lands on the
+      // form alone, and the `/admin` prefix keeps it behind the admin
+      // redirect in resolveAuthRedirect.
+      GoRoute(
+        path: AdminDevRequestNewScreen.routePath,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AdminDevRequestNewScreen(),
       ),
 
       // Recipe books routes (outside shell — navigated via push)
