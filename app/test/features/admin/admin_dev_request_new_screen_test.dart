@@ -312,6 +312,16 @@ void main() {
       await tester.enterText(_bodyField, 'A body');
       await tester.pump();
       expect(_submitEnabled(tester), isTrue);
+
+      // And the title on its own. Without this half, dropping the title
+      // check left every case here green (negative control M19): the
+      // title was never blank while the body was not.
+      await tester.enterText(_titleField, '   ');
+      await tester.pump();
+      expect(_submitEnabled(tester), isFalse, reason: 'title is blank');
+      await tester.enterText(_titleField, '');
+      await tester.pump();
+      expect(_submitEnabled(tester), isFalse, reason: 'title is empty');
     });
 
     testWidgets('403 renders the server message and keeps the text',
