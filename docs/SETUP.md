@@ -263,6 +263,32 @@ npx nx run-many -t lock
 cd app && flutter test
 ```
 
+### Python test targets: one coverage data file per project
+
+`utils`, `test-helper` and `migrator` run `poetry run pytest` from the
+workspace root (`cwd: {workspaceRoot}`), and CI runs test targets
+concurrently (`nx affected -t test --parallel=3`). coverage.py writes its
+data file relative to the process cwd, so without isolation all three write
+`.coverage*` into the same directory and the last to finish combines the
+others' fragments. That is invisible until two projects measure different
+kinds of coverage — e.g. one adds `--cov-branch` — and then CI fails with
+`DataError: Can't combine branch coverage data with statement data`, while
+`npx nx run <project>:test` on its own stays green.
+
+Rules for any pytest target that runs from the workspace root:
+
+- Prefix the command with
+  `mkdir -p coverage/<projectRoot> && COVERAGE_FILE=coverage/<projectRoot>/.coverage`
+  (or use `cwd: {projectRoot}`, as `api` and `worker` do).
+- Pin report paths (`--cov-report xml:…`, `--junitxml=…`, `--html=…`) in the
+  nx target, not in the package's `pyproject.toml` `addopts`: those paths
+  resolve against the invocation cwd, so a `../../` prefix is right from the
+  package directory and points outside the repo from the workspace root.
+
+`tools/pytest-coverage-isolation-check.py` enforces the first rule in CI
+(lint job); reproduce the concurrent case locally with
+`npx nx run-many -t test --projects=utils,test-helper,migrator --parallel=3`.
+
 ## Step 8: Configure Firebase (Push Notifications)
 
 Firebase is used for push notifications in cooking mode timers and import job completion alerts.

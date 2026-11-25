@@ -29,7 +29,9 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["poetry run pytest libraries/test-helper/"],
+        "commands": [
+          "mkdir -p coverage/libraries/test-helper && COVERAGE_FILE=coverage/libraries/test-helper/.coverage poetry run pytest libraries/test-helper/ --cov-report xml:coverage/libraries/test-helper/coverage.xml --cov-report html:coverage/libraries/test-helper/html --junitxml=reports/libraries/test-helper/unittests/junit.xml --html=reports/libraries/test-helper/unittests/html/index.html"
+        ],
         "cwd": "{workspaceRoot}"
       }
     }

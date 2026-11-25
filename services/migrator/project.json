@@ -75,7 +75,9 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["poetry run pytest services/migrator/"],
+        "commands": [
+          "mkdir -p coverage/services/migrator && COVERAGE_FILE=coverage/services/migrator/.coverage poetry run pytest services/migrator/ --cov-report xml:coverage/services/migrator/coverage.xml --cov-report html:coverage/services/migrator/html --junitxml=reports/services/migrator/unittests/junit.xml --html=reports/services/migrator/unittests/html/index.html"
+        ],
         "cwd": "{workspaceRoot}"
       }
     },

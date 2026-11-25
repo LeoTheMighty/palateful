@@ -282,6 +282,37 @@
   fix: `gh workflow enable deploy-freshness.yml`), the cron is not on the
   default branch (S1), or the repo's scheduler has gone quiet generally (S2/S3).
 
+## Spec-blocking runs
+
+- [ ] **bugsimppho7: capture the vision-eval baseline run** — AC4 of
+  `dev/dev-bugsimppho7-*-vision-extraction-eval-suite.md` wants a first
+  `vision_extraction` run pasted into the PR description as the
+  `field_accuracy` regression baseline. It needs a real `OPENAI_API_KEY`
+  and bills 5 live gpt-4o-mini vision calls, so no unattended agent can
+  do it. Run from the repo root (the key can also live in
+  `services/eval/.env.eval`, which the target loads automatically):
+
+  ```bash
+  # 1. The one live run.
+  OPENAI_API_KEY=<key> npx nx run eval:run-vision \
+      --output results/vision-baseline.json
+
+  # 2. Capture it: rewrites baselines/vision_extraction_baseline.json
+  #    and prints the PR-pasteable markdown block. No API calls.
+  npx nx run eval:capture-vision-baseline \
+      --results results/vision-baseline.json --markdown
+  ```
+
+  Paste step 2's markdown block into the PR and commit the updated
+  `baselines/vision_extraction_baseline.json`. Don't hand-transcribe the
+  console table — the capture script is what pins `field_accuracy_avg`
+  as the soft regression bar for the future hardening pass.
+
+  Everything else in the suite — evaluator, 0.80 gate, fixtures, docs,
+  baseline placeholder + capture script, and 78 offline tests (including
+  a seeded end-to-end run through the real `EvalRunner`) — is already
+  green without spending anything.
+
 ## /devx-init deferred work
 
 - [ ] **devx-init: supervisor-install-deferred** — OS-supervisor install deferred by non-interactive `devx init`
