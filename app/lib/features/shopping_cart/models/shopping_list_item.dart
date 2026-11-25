@@ -53,7 +53,7 @@ class ShoppingListItem {
       // if one row is missing a name. Rendering "" is better than a
       // caller-side exception that takes out the cart.
       name: (json['name'] as String?) ?? '',
-      quantity: (json['quantity'] as num?)?.toDouble(),
+      quantity: _tryParseQuantity(json['quantity']),
       unit: json['unit'] as String?,
       isChecked: json['is_checked'] as bool? ?? false,
       checkedAt: _tryParseDateTime(json['checked_at']),
@@ -71,6 +71,42 @@ class ShoppingListItem {
       pantryIngredientId: json['pantry_ingredient_id'] as String?,
       pantryId: json['pantry_id'] as String?,
     );
+  }
+
+  /// Parse a quantity without letting one bad row destroy the whole payload.
+  ///
+  /// This line used to be `(json['quantity'] as num?)?.toDouble()`, and that
+  /// cast is why the cart was unusable from at least 2026-04 to 2026-09:
+  /// Pydantic v2 renders a bare `Decimal` as a JSON **string**, the cast threw
+  /// `_TypeError`, and because it threw inside `fromJson` it took down the
+  /// **entire list parse** — not the one row. The user saw an empty cart, the
+  /// server returned 200, and nothing was logged. **An empty cart and a broken
+  /// cart look identical**, which is why it survived months.
+  ///
+  /// The server side is fixed (`schemas/json_types.py::JsonDecimal`) and, as
+  /// of 2026-09-24, **no cart endpoint can emit a string quantity** — the ten
+  /// paths that carry one either use `JsonDecimal` or call `float()`
+  /// explicitly. So this is **defence in depth at a parse boundary, not a
+  /// live bug fix**.
+  ///
+  /// It is still worth having, because the original defect arrived exactly
+  /// this way: an endpoint built without the serializer. A new one added
+  /// tomorrow would reintroduce it, and this guard turns "the cart is empty"
+  /// back into "one quantity is missing".
+  ///
+  /// **A malformed quantity yields `null`, and the row still renders.** That
+  /// is deliberate and matches this class's existing shape: `id` stays strict
+  /// because a null id is a real bug worth seeing, `name` degrades to `''`
+  /// rather than dropping the row. Quantity is not identity, so it degrades
+  /// too. **Dropping the row would hide an item the user added** — worse than
+  /// showing it without an amount, and harder to notice.
+  static double? _tryParseQuantity(Object? raw) {
+    if (raw == null) return null;
+    if (raw is num) return raw.toDouble();
+    // The Decimal-as-string case, and anything else stringy.
+    if (raw is String) return double.tryParse(raw);
+    // bool, List, Map, or anything else: no sane reading. Degrade, don't throw.
+    return null;
   }
 
   static DateTime? _tryParseDateTime(Object? raw) {

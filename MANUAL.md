@@ -191,13 +191,29 @@
   gh run list --workflow=deploy-freshness.yml --event=schedule --limit 60 \
     --json createdAt,conclusion
   ```
-- [ ] **E-7 step 6b — after this branch merges, confirm a scheduled run goes
-  GREEN.** This is what actually remains, and it is a confirmation of the fix,
-  not of the mechanism. **All 50 firings above failed** in
-  `configure-aws-credentials` (`Credentials could not be loaded`) because
-  `main`'s copy has no `environment: production` — i.e. the freeze detector has
-  never measured prod, not once, since the day it shipped. The next scheduled
-  run after merge should reach the measure step and print a gap.
+- [x] **E-7 step 6b — CLOSED 2026-09-20. The check measured prod for the
+  first time in its existence.** Run
+  [35528125176](https://github.com/LeoTheMighty/palateful/actions/runs/35528125176)
+  fired unattended at **18:09:04Z**, authenticated, and reported:
+  ```
+  Running task definition: .../task-definition/palateful-api-prod:63
+  Deployed commit: 848311af 2026-07-31 10:24:08 -0600
+  Gap: 51 day(s); threshold: 7 day(s).
+  ::error::Prod is running an image 51 days old (threshold 7d)
+  ```
+  The 50 firings before it all died in `configure-aws-credentials`
+  (`Credentials could not be loaded`) because `main`'s copy had no
+  `environment: production`. Run 51 reached ECS. The difference was PR #25.
+
+  🔴 **THIS CHECK WILL REPORT RED ON EVERY FIRING, AND THAT IS CORRECT.**
+  If a red `deploy-freshness` cron brought you here: the check is working.
+  Prod is genuinely stale — the API has run task-definition `:63` since
+  2026-07-31. It will keep reporting red until a change under `services/`
+  actually deploys, because `services_to_build` comes up empty for PRs that
+  only touch `app/`, `tools/`, `.github/` or docs. **Do not "fix" the check.**
+  The fix is landing the deploy. See `rsh102` — the rotation fix must reach
+  prod before the 2026-10-29 rotation.
+
   ⚠ **Do not wait for 09:00 MDT.** These 50 runs normally landed
   **15:27Z–20:44Z** (drift up to 5.7h past the declared `0 15 * * *`), with a
   one-day excursion on 2026-08-28 to 00:19Z and 23:58Z. Check "a run landed in
@@ -274,6 +290,53 @@
   interactive `/devx-init` flow (or see docs/SETUP.md). Until then,
   `devx manage` / `devx loop` run only while you start them yourself.
   Filed: 2026-07-27T16:00:08.032Z  <!-- devx:init-failure:supervisor-install-deferred -->
+
+## AWS account limits
+
+- [ ] **Request an increase to the on-demand GPU service quota — the parser's
+  on-demand compute environment cannot launch a single instance until it is
+  granted.** (filed 2026-09-23, from pcap1 / LESSONS corollary (g))
+
+  **The ask.** AWS Service Quotas, EC2, quota **`L-DB2E81BA`** — *"Running
+  On-Demand G and VT instances"*.
+
+      current value      0.0
+      adjustable         true
+      change history     0 entries — never requested, since account creation
+      request            32 vCPUs   (8 is the functional floor)
+
+  **Why 32 and why 8 is the floor.** `palateful-parser-ondemand-gpu-prod` is
+  `ENABLED`/`VALID` with `maxvCpus 8`, so **below 8 it cannot reach its own
+  maximum**. The spot equivalent `L-3819A6DF` is **32**, matching the spot
+  environment's `maxvCpus 32` — so **32 is what makes on-demand a real peer
+  rather than a token fallback**. Instance pool for both:
+  `g4dn.xlarge / g6.xlarge / g5.xlarge / g4dn.2xlarge / g5.2xlarge`.
+
+  **It is a support request, not a code change**, with hours-to-days
+  turnaround — which is why filing it early matters and why nothing in the
+  repo can substitute for it.
+
+  ⚠️ **Until it is granted, the queue must stay spot-first.** `odfirst1`
+  (#76, merged) put on-demand at order 1; that met a quota of 0 and took the
+  pipeline down — a job sat `RUNNABLE` for 85 minutes on 2026-09-23 while
+  spot idled at order 2, because **Batch does not fall through an incapable
+  order 1**. `spotback1` (#78) reverts to spot-first. **Do not "fix" the
+  spot-first ordering as an oversight** — it is deliberate and load-bearing
+  until this quota exists.
+
+  **Follow-up, once granted:** flip the ordering back to `#76`'s
+  (on-demand first, spot second) and confirm a job actually starts on
+  on-demand. The remedy and its follow-up are in the same row on purpose, so
+  the second half is not rediscovered later.
+
+  **Two separate problems, in order.** The ordering revert (#78) *restores
+  service*. This quota request *makes on-demand real*. Neither substitutes
+  for the other, and only the first is urgent.
+
+  *How this was missed, recorded because it is the same shape as the rest:
+  the quota and the compute environment were both measured and correct; the
+  layer above — the queue ordering and the job list — was inferred rather
+  than checked. Two layers measured, the third assumed.*
 
 ## Cross-repo work awaiting a commit
 
@@ -410,6 +473,25 @@ monitor now works — and is correctly reporting a stale prod **to nobody**,
 because nothing in palateful pushes to a human (see `dev-obsgap1` G1/G3).
 
 ## dfrcp1 — subscribe to `palateful-prod-alerts` (blocks two detectors)
+
+> **absal1 blocks on this too (palateful-30, 2026-09-24)** — three detectors, not
+> two. Two details that change what "subscribed" has to mean:
+>
+> - **Confirm the link.** `list-subscriptions-by-topic` also returns unconfirmed
+>   subscriptions, whose `SubscriptionArn` is the literal `PendingConfirmation`
+>   rather than an ARN. A created-but-unconfirmed subscription reads as coverage
+>   in the console and delivers nothing, and since nobody has subscribed yet it
+>   is the likely FIRST state. absal1 counts only real `arn:` entries.
+> - **absal1's check stays red until this is done**, on purpose. That is the
+>   check working, not a flake.
+>
+> **DONE — measured 2026-09-24 (palateful-30):** `palateful-prod-alerts` now has
+> **1 confirmed** email subscription (`SubscriptionsConfirmed=1`,
+> `SubscriptionsPending=0`, and one `arn:`-prefixed entry in
+> `list-subscriptions-by-topic`). It read **0 confirmed on 2026-09-22**, so the
+> gap was real and is now closed. Alarms publishing to this topic can reach a
+> human. The subscription still lives outside Terraform, so nothing recreates
+> it if it is deleted — which is why absal1 keeps checking it every run.
 
 **Measured 2026-09-22:** the topic exists
 (`arn:aws:sns:us-east-1:<account>:palateful-prod-alerts`, created by alrt1 #41)

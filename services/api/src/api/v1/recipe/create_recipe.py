@@ -153,7 +153,11 @@ class CreateRecipe(AsyncEndpoint):
 
             ingredient_responses.append(
                 CreateRecipe.IngredientResponse(
-                    id=str(recipe_ingredient.id),
+                    # `RecipeIngredient` is a join table: composite PK
+                    # (recipe_id, ingredient_id), no `id` column. Surface the
+                    # ingredient id, exactly as update_recipe.py:295 does —
+                    # reading `.id` here 500'd every manual creation (recid500).
+                    id=str(recipe_ingredient.ingredient_id),
                     ingredient=CreateRecipe.IngredientSummary(
                         id=str(ingredient.id),
                         canonical_name=ingredient.canonical_name,
