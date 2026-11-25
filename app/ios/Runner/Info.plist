@@ -69,6 +69,10 @@
 	<string>Palateful uses the microphone for hands-free voice input while cooking</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Palateful uses speech recognition for hands-free voice input while cooking</string>
+	<!-- shk103: sensors_plus >= 6.0 crashes the app on its first motion read
+	     without this key. Shake-to-report reads the accelerometer. -->
+	<key>NSMotionUsageDescription</key>
+	<string>Palateful uses motion so you can shake your phone to send feedback</string>
 	<!-- Push notifications (Firebase Cloud Messaging + APNs) -->
 	<key>UIBackgroundModes</key>
 	<array>
