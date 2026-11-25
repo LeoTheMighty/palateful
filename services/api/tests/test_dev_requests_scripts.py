@@ -272,6 +272,9 @@ def test_metrics_counts_and_lags(eval_db, admin):
     fresh, _ = row("submitted", minutes_old=10)
     stale, _ = row("received", days_old=8)
     adopted, adopted_sha = row("submitted", minutes_old=30)
+    # Adopted straight from submitted: it has audit rows, but no received
+    # one, so it must contribute no lag (a loose audit match would add ~60 min).
+    direct, direct_sha = row("submitted", minutes_old=60)
     row("accepted")  # accepted with no audit row: the G-4 failure metrics exists to catch
     row("declined", days_old=9)  # terminal, so never stale
 
@@ -279,11 +282,12 @@ def test_metrics_counts_and_lags(eval_db, admin):
     assert _write(eval_db, "transition", fresh, "submitted", "received").ok
     assert _write(eval_db, "transition", adopted, "submitted", "received").ok
     assert _write(eval_db, "transition", adopted, "received", "accepted", "--sha", adopted_sha).ok
+    assert _write(eval_db, "transition", direct, "submitted", "accepted", "--sha", direct_sha).ok
 
     run = _read(eval_db, "metrics")
     assert run.ok, run.describe()
     [m] = run.of_kind("metrics")
-    assert m["total"] == 5
+    assert m["total"] == 6
     assert m["by_status"] == {
         **dict.fromkeys(
             (
@@ -301,7 +305,7 @@ def test_metrics_counts_and_lags(eval_db, admin):
             0,
         ),
         "received": 2,
-        "accepted": 2,
+        "accepted": 3,
         "declined": 1,
     }
     assert m["stale_undecided"] == 1
