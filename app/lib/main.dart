@@ -33,6 +33,7 @@ import 'core/services/perf_flags_service.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
 import 'features/home/recipe_list_view.dart';
+import 'features/profile/services/feedback_launcher.dart';
 import 'features/recipes/cook_mode/services/cook_session_persister.dart';
 import 'providers/theme_mode_provider.dart';
 
@@ -425,18 +426,36 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp>
     if (!kE2EMode) {
       final pushService = getIt<PushNotificationService>();
       pushService.setNavigatorKey(rootNavigatorKey);
-      WidgetsBinding.instance.addObserver(this);
     }
+    // Every mode: the resume handler below gates its push work on
+    // !kE2EMode itself, and the feedback flush runs everywhere.
+    WidgetsBinding.instance.addObserver(this);
 
     if (!kIsWeb) {
       _shareHandler = ShareIntentHandler(authService: getIt<AuthService>());
       _initShareListener();
       _initAuthReplayListener();
     }
+
+    // FR-9: queued feedback sends at cold start, whichever screen opens
+    // first. main() restores the session before runApp, so a signed-in
+    // cold start is signed in here.
+    _flushFeedbackIfSignedIn();
+  }
+
+  /// FR-9: the offline feedback queue flushes from the app root, not only
+  /// while Profile is mounted. The launcher coalesces this with Profile's
+  /// own call on the same resume, so an entry is sent once.
+  void _flushFeedbackIfSignedIn() {
+    if (!getIt<AuthService>().isAuthenticated) return;
+    unawaited(FeedbackLauncher.instance.flushQueue());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _flushFeedbackIfSignedIn();
+    }
     // When the app returns to foreground, verify OS permission + token state.
     // Covers: user flipped iOS Settings while backgrounded, token rotated, etc.
     // autoPrompt mirrors the boot-path rule: only past-onboarding users may
@@ -540,9 +559,7 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp>
     if (listener != null) {
       getIt<AuthService>().removeListener(listener);
     }
-    if (!kE2EMode) {
-      WidgetsBinding.instance.removeObserver(this);
-    }
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 

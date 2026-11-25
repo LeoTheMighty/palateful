@@ -3,6 +3,23 @@ import 'package:flutter/material.dart';
 import '../../../core/services/api_client.dart';
 import '../services/feedback_cache_service.dart';
 
+/// How the sheet was opened (PRD FR-9). Sent as `context.trigger`; the
+/// server accepts exactly these wire values (`FeedbackContext.trigger`,
+/// `services/api/src/api/v1/user/create_user_feedback.py`).
+///
+/// One-way contract: once a release sends a value, the server can never
+/// drop it — the sheet re-queues on any error, so a 422 would retry forever.
+enum FeedbackTrigger {
+  profile('profile'),
+  shake('shake');
+
+  const FeedbackTrigger(this.wire);
+
+  /// The value written into the context envelope. Spelled out rather than
+  /// taken from [name] so renaming an enum case cannot change the wire.
+  final String wire;
+}
+
 /// Bottom sheet that lets the user send a one-off note to the admin.
 ///
 /// Modelled on `PostCookFeedbackSheet`: bottom-pinned, Material text
@@ -30,6 +47,10 @@ class FeedbackSheet extends StatefulWidget {
   final String? platform;
   final String? appVersion;
 
+  /// Which entry point opened the sheet. Optional, so a caller that does
+  /// not say sends no `trigger` key at all.
+  final FeedbackTrigger? trigger;
+
   const FeedbackSheet({
     super.key,
     this.apiClient,
@@ -39,6 +60,7 @@ class FeedbackSheet extends StatefulWidget {
     this.currentRoute,
     this.platform,
     this.appVersion,
+    this.trigger,
   });
 
   @override
@@ -89,6 +111,7 @@ class _FeedbackSheetState extends State<FeedbackSheet> {
     if (widget.appVersion != null) ctx['app_version'] = widget.appVersion;
     if (widget.platform != null) ctx['platform'] = widget.platform;
     if (widget.currentRoute != null) ctx['route'] = widget.currentRoute;
+    if (widget.trigger != null) ctx['trigger'] = widget.trigger!.wire;
     return ctx.isEmpty ? null : ctx;
   }
 
