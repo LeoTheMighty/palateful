@@ -272,6 +272,16 @@ jobs:
       - name: Run migrations
         run: npx nx run migrator:migrate-test
 
+      # gate4api1 — the api runner `devx gate evals` (Gate 4, the RED gate)
+      # reads. Unconditional: nx maps neither tools/ nor devx.config.yaml.
+      # Proves the runner exits 0 on a green eval and nonzero on a red one
+      # for its own reason, with a control showing the bare `poetry run
+      # pytest <file>` it replaced exits 1 on the same green file. Runs here
+      # because it needs the api virtualenv; it writes nothing to reports/
+      # or coverage/, so the artifacts uploaded below are the suite's own.
+      - name: api eval runner exit codes (gate4api1 guard)
+        run: python3 tools/api-pytest-targeted-self-test.py
+
       # --exclude=app: this job is the Python suite and has no Flutter
       # toolchain (only `flutter-test` runs subosito/flutter-action). Now
       # that `app` is a registered nx project (nxappproj), `affected -t
