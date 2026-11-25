@@ -23,6 +23,12 @@ Fixtures live in a dot-directory under services/api/tests/ so the real
 conftest applies, while the full suite's recursion skips them (pytest's
 default norecursedirs includes '.*'). Removed on exit.
 
+Bare mode is checked too: `/devx` Phase 5 runs each project's `test`
+command with no arguments, and there the runner must be the whole suite,
+coverage pin included — exactly the `poetry run pytest` it replaced. A
+`poetry` shim on PATH records what the runner execs, so this costs no
+suite run.
+
 Exit codes: 0 every case held, 1 a case failed, 2 the control no longer
 reproduces (the hazard this runner exists for is gone, or the fixtures
 escaped it — either way, re-read before trusting a GREEN here).
@@ -98,10 +104,10 @@ def excerpt(stdout: str, stderr: str) -> str:
     return "\n".join(lines[-10:])
 
 
-def run(cmd: str, env: dict[str, str]) -> tuple[int, str, str]:
+def run(cmd: str, env: dict[str, str], cwd: Path = API_DIR) -> tuple[int, str, str]:
     """(exit code, gate excerpt, full output)."""
     r = subprocess.run(
-        cmd, shell=True, cwd=API_DIR, env=env, capture_output=True, text=True
+        cmd, shell=True, cwd=cwd, env=env, capture_output=True, text=True
     )
     return r.returncode, excerpt(r.stdout, r.stderr), f"{r.stdout}\n{r.stderr}"
 
@@ -144,7 +150,26 @@ def main() -> int:
             failures += 1
             print(f"FAIL {name}: exit {code} (want {want}); "
                   f"excerpt missing {missing}\n{out}\n")
-        print(f"{len(CASES) - failures}/{len(CASES)} cases held")
+        # Bare mode: must exec `poetry run pytest` verbatim from services/api.
+        # Invoked from the repo root, so the cwd check proves the chdir.
+        shim = tmp / "shim-bin"
+        shim.mkdir()
+        (shim / "poetry").write_text('#!/bin/sh\necho "SHIM cwd=$(pwd -P) argv=$*"\n')
+        (shim / "poetry").chmod(0o755)
+        code, out, _ = run(
+            f"python3 {RUNNER.relative_to(REPO)}",
+            {**env, "PATH": f"{shim}{os.pathsep}{env.get('PATH', '')}"},
+            cwd=REPO,
+        )
+        want_line = f"SHIM cwd={API_DIR} argv=run pytest"
+        if code == 0 and want_line in out.splitlines():
+            print("ok   bare (no args): execs `poetry run pytest` in services/api")
+        else:
+            failures += 1
+            print(f"FAIL bare (no args): exit {code}, want 0 and the line "
+                  f"{want_line!r}\n{out}\n")
+        total = len(CASES) + 1
+        print(f"{total - failures}/{total} cases held")
         return 1 if failures else 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
