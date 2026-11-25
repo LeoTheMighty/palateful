@@ -29,8 +29,11 @@ Exit codes — pytest's own vocabulary, with one correction:
   1  RED         at least one test failed or errored (pytest's code).
   2  INTERRUPTED usually a collection error, e.g. an import of a module the
                  eval is written ahead of. Read the quote.
-  3  INTERNAL    pytest internal error, or this runner could not read the
-                 junit report and so will not claim GREEN.
+  3  INTERNAL    pytest internal error; or this runner could not read the
+                 junit report and so will not claim GREEN; or pytest exited
+                 1 with no test failed or errored — the original defect's
+                 shape (a plugin or hook, not a test, set the status), so
+                 it is not reported as RED.
   4  USAGE       bad path or option.
   5  NO-RESULT   nothing collected, or — the correction — pytest said 0 but
                  no test passed (every selected test skipped). Pytest
@@ -123,6 +126,12 @@ def verdict(rc: int, c: dict[str, int] | None) -> tuple[int, str]:
             "this runner does not (pytest exit 0 → 5)"
         )
     if rc == 1:
+        if c is not None and c["failed"] == 0 and c["errors"] == 0:
+            return 3, (
+                f"INTERNAL — pytest exited 1 but no test failed or errored "
+                f"({tally}): something other than a test set the exit status "
+                f"(a threshold plugin or hook); not RED (pytest exit 1 → 3)"
+            )
         if c is not None and c["failed"] == 0 and c["errors"] > 0:
             return 1, (
                 f"RED (errors only: no assertion failed; a fixture, setup or "

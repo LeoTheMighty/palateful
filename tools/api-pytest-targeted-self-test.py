@@ -85,6 +85,13 @@ FIXTURES = {
     ),
     "test_rst_empty.py": "# no tests\n",
     "test_rst_collect_error.py": "import rst_module_written_ahead_of  # noqa\n",
+    # The original defect's shape, minus coverage: every test passes and a
+    # hook — not a test — sets exit status 1. Must not read as RED.
+    "exit1/conftest.py": (
+        "def pytest_sessionfinish(session, exitstatus):\n"
+        "    session.exitstatus = 1\n"
+    ),
+    "exit1/test_rst_passes_but_exit1.py": "def test_ok():\n    assert True\n",
 }
 
 # (fixture, expected runner exit, text the gate's excerpt must contain)
@@ -96,6 +103,7 @@ CASES = [
     ("test_rst_empty.py", 5, ["NO-RESULT — no tests collected"]),
     ("test_rst_collect_error.py", 2, ["INTERRUPTED"]),
     ("test_rst_missing.py", 4, ["USAGE"]),
+    ("exit1/test_rst_passes_but_exit1.py", 3, ["no test failed or errored"]),
 ]
 
 
@@ -118,6 +126,7 @@ def main() -> int:
     rel = tmp.relative_to(API_DIR).as_posix()
     try:
         for name, body in FIXTURES.items():
+            (tmp / name).parent.mkdir(parents=True, exist_ok=True)
             (tmp / name).write_text(body)
 
         # Control: the old runner on the green fixture, with DATABASE_URL set
