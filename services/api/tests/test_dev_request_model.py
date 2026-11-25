@@ -437,7 +437,7 @@ class TestCreateRefusals:
     def test_an_ordinary_422_is_unchanged_utf8(self, client, admin):
         resp = client.post(CREATE_PATH, json={"title": "é" * 121, "body": "B"})
         assert resp.status_code == 422, resp.text
-        assert "é".encode("utf-8") in resp.content  # not escaped: the fallback did not run
+        assert "é".encode() in resp.content  # not escaped: the fallback did not run
 
 
 class TestStoreFailure:
