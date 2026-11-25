@@ -20,9 +20,11 @@ from sqlalchemy.exc import OperationalError
 from utils.services.db_credentials import (
     AUTH_MESSAGE_PATTERNS,
     AUTH_SQLSTATES,
+    MISSING_PASSWORD_PATTERN,
     _chain,
     _sqlstate_of,
     is_auth_error,
+    is_missing_password,
 )
 
 
@@ -166,7 +168,13 @@ def test_class_28_beyond_the_known_code_does_not_match():
 @pytest.mark.parametrize(
     ("message", "expected"),
     [
-        pytest.param("no password supplied", True, id="genuine-credentials"),
+        # selfheal1: was `True` under rsh102's AC. The client had no
+        # password to send — the server never evaluated a credential, and a
+        # replacement task reads the same empty value. Same shape as the
+        # pg_hba case below, so the same answer.
+        pytest.param(
+            "fe_sendauth: no password supplied", False, id="client-had-no-password"
+        ),
         pytest.param(
             'password authentication failed for user "app"',
             True,
@@ -244,3 +252,52 @@ def test_chain_is_breadth_first_outermost_first():
     inner = PsycopgLike("inner", pgcode="28P01")
     outer = wrapped(inner)
     assert list(_chain(outer))[0] is outer
+
+
+# ---------------------------------------------------------------------------
+# `is_missing_password` (selfheal1)
+# ---------------------------------------------------------------------------
+
+
+def test_a_task_with_no_password_is_not_an_auth_failure():
+    """An empty `DB_PASSWORD` must never drive a replacement.
+
+    Driver-realistic shape: psycopg2 carries no SQLSTATE at connect time,
+    asyncpg may carry `28000`. Neither may admit it.
+    """
+    for exc in (
+        wrapped(PsycopgLike("fe_sendauth: no password supplied", pgcode=None)),
+        AsyncpgLike("no password supplied", sqlstate="28000"),
+    ):
+        assert is_auth_error(exc) is False
+        assert is_missing_password(exc) is True
+
+
+def test_missing_password_is_not_an_auth_message_pattern():
+    """Pins the disjointness: re-adding it would restore the drain."""
+    assert not any(MISSING_PASSWORD_PATTERN in p for p in AUTH_MESSAGE_PATTERNS)
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        pytest.param(None, id="none"),
+        pytest.param(
+            AsyncpgLike('password authentication failed for user "app"'),
+            id="real-rejection",
+        ),
+        pytest.param(OSError("connection refused"), id="network"),
+    ],
+)
+def test_is_missing_password_is_narrow(exc):
+    assert is_missing_password(exc) is False
+
+
+def test_is_missing_password_walks_the_chain():
+    try:
+        try:
+            raise PsycopgLike("fe_sendauth: no password supplied")
+        except PsycopgLike as inner:
+            raise RuntimeError("probe failed") from inner
+    except RuntimeError as outer:
+        assert is_missing_password(outer) is True

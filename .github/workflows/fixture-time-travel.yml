@@ -1,0 +1,113 @@
+# fxfuse — nightly fixture time-travel check.
+#
+# WHY THIS EXISTS
+# The `flutter test` suite passing today says nothing about whether a
+# fixture date is about to age out of a `DateTime.now()`-relative window
+# in lib/. That failure lands months after the commit that "caused" it,
+# names no culprit, and reds the root job every deploy hangs off — prod
+# sat on image `c85e350` from 2026-04-26 to 2026-07-27 for exactly this
+# reason.
+#
+# `app/test/fixture_date_guard_test.dart` stops NEW inline
+# `'created_at': '<literal>'` fixtures. It cannot check the ~48
+# `// age-independent` opt-outs, which are free-text claims that the
+# value never reaches a now-relative comparison. This job is the only
+# thing that can falsify them: it re-runs the suite with every fixture
+# date shifted 406 days into the past, which is arithmetically the same
+# as running 406 days from now.
+#
+# NOT a PR gate, deliberately: it is a second full suite run (~2 min
+# locally, longer here), and its failures are "this will break in N
+# months", not "this PR is wrong". Nightly turns the next fixture to age
+# out from a surprise outage into a morning ticket.
+#
+# A red run is triaged, not silenced. Read the script's header first —
+# a test asserting an absolute date fails here while a real clock
+# advance would not, and that class is tagged `no-time-travel` rather
+# than "fixed".
+name: fixture time-travel
+
+on:
+  schedule:
+    # 09:12 UTC daily — off the hour so it doesn't pile onto the
+    # top-of-hour runner surge, and before the working day in MT.
+    - cron: '12 9 * * *'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Days to advance the clock (multiples of 7 keep weekdays)'
+        required: false
+        default: '406'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fixture-time-travel
+  cancel-in-progress: false
+
+jobs:
+  time-travel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Keep channel + version in sync with ci.yml's flutter-test job.
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.7'
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Time-travel the suite
+        working-directory: app
+        run: bash tool/time_travel_check.sh --days "${{ inputs.days || '406' }}"
+
+      # The check is only worth running if it would still catch a real
+      # fuse. Re-freeze the reference fixture's anchor to a literal and
+      # confirm the same shift turns it red; a green control means the
+      # harness has stopped biting and the nightly pass above is
+      # meaningless. Runs on a throwaway copy — never the checkout.
+      - name: Negative control — the check must still fail on a real fuse
+        if: always()
+        working-directory: app
+        run: |
+          set -euo pipefail
+          CTL="$(mktemp -d)"
+          trap 'rm -rf "$CTL"' EXIT
+          cp -R lib test ios android pubspec.yaml pubspec.lock \
+                analysis_options.yaml "$CTL/"
+          cd "$CTL"
+          python3 - <<'EOF'
+          import datetime, pathlib, re
+          # Freeze the anchor at TODAY: the control's premise is "green at
+          # the real clock, red once shifted", so a literal that is already
+          # stale would make the control pass for the wrong reason.
+          today = datetime.date.today().isoformat()
+          p = pathlib.Path('test/features/activity/imports_tab_test.dart')
+          s = p.read_text()
+          new, n = re.subn(
+              r'final DateTime _fixtureBase =\s*\n?\s*DateTime\.now\(\)[^;]*;',
+              f"final DateTime _fixtureBase = DateTime.parse('{today}T10:00:00Z');",
+              s)
+          assert n == 1, f'control could not re-freeze the anchor (matched {n})'
+          p.write_text(new)
+          EOF
+          cp "$GITHUB_WORKSPACE/app/tool/time_travel_check.sh" ./tt.sh
+          chmod +x ./tt.sh
+          if ./tt.sh --days 406 test/features/activity/imports_tab_test.dart; then
+            echo "::error::Negative control PASSED — the time-travel check no"
+            echo "::error::longer detects a frozen fixture, so today's green run"
+            echo "::error::proves nothing. Fix the harness before trusting it."
+            exit 1
+          fi
+          echo "Negative control failed as required: the check still bites."

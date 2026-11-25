@@ -74,7 +74,7 @@ packages:
     source: hosted
     version: "1.14.0"
   auth0_flutter_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: auth0_flutter_platform_interface
       sha256: "4ec77a30eb5c464a7e5744c72ab380a1f073752de3a8542eb0c5c717053b4e71"
@@ -585,7 +585,7 @@ packages:
     source: hosted
     version: "1.0.8"
   flutter_web_plugins:
-    dependency: transitive
+    dependency: "direct main"
     description: flutter
     source: sdk
     version: "0.0.0"

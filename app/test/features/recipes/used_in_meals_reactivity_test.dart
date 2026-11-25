@@ -125,7 +125,8 @@ void main() {
             'id': 'm-b',
             'name': 'Meal B',
             'recipe_book_id': 'book-1',
-            'created_at': '2026-04-18T00:00:00Z',
+            'created_at': '2026-04-18T00:00:00Z',  // age-independent — used_in_meals_provider.dart:59 takes only recipeId off this
+            // payload; the meal map is never parsed and meals_using_this_recipe.dart renders no dates.
             'updated_at': '2026-04-18T00:00:00Z',
             'is_favorite': false,
             'components': <Map<String, dynamic>>[],
@@ -163,7 +164,8 @@ void main() {
             'id': 'm-b',
             'name': 'Other',
             'recipe_book_id': 'book-1',
-            'created_at': '2026-04-18T00:00:00Z',
+            'created_at': '2026-04-18T00:00:00Z',  // age-independent — used_in_meals_provider.dart:59 takes only recipeId off this
+            // payload; the meal map is never parsed and meals_using_this_recipe.dart renders no dates.
             'updated_at': '2026-04-18T00:00:00Z',
             'is_favorite': false,
             'components': <Map<String, dynamic>>[],

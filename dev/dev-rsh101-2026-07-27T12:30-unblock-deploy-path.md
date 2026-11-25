@@ -63,7 +63,7 @@ cutoff. Fix belongs in the test, not the widget.
   test under `app/test/`, and **conditionally** `.github/workflows/ci.yml`.
 - RED artifact: `app/test/features/activity/imports_tab_test.dart` (E-1,
   first half) — already failing. Re-run it; do **not** re-author it to pass.
-- Full context: `_devx/workstreams/rotation-self-heal/plan.md` §Phase 1.
+- Full context: `_devx/workstreams/rotation-self-heal/plan/agent.md` §Phase 1.
 
 ## Status log
 

@@ -51,6 +51,20 @@ async def health_check():
             content={"detail": "db credentials invalid", "db": verdict.name},
         )
 
+    if verdict is ProbeVerdict.NOT_CONFIGURED:
+        # Still 200 — a restart cannot conjure a `DATABASE_URL`, so replacing
+        # the task only drains the service. But `status: ok` would be the
+        # very claim this workstream exists to stop making: nothing was
+        # verified and every real request on this task will fail. The
+        # fail-open verdicts below keep `ok` because they are *doubt* about a
+        # possibly-transient condition; this one is a certainty.
+        logger.error(
+            "health check: no database is configured on this task — every "
+            "request needing the database will fail; failing open because a "
+            "replacement task would read the same configuration"
+        )
+        return {"status": "degraded", "db": verdict.name}
+
     return {"status": "ok", "db": verdict.name}
 
 

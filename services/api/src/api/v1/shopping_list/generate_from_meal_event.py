@@ -1,9 +1,9 @@
 """Generate shopping list from meal event endpoint."""
 
 from datetime import datetime
-from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
+from schemas.json_types import JsonDecimal
 from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
@@ -143,13 +143,13 @@ class GenerateFromMealEvent(AsyncEndpoint):
     class ItemResponse(BaseModel):
         id: str
         name: str
-        quantity: Decimal | None = None
+        quantity: JsonDecimal | None = None
         unit: str | None = None
         is_checked: bool
         category: str | None = None
         ingredient_id: str | None = None
         recipe_id: str | None = None
-        already_have_quantity: Decimal | None = None
+        already_have_quantity: JsonDecimal | None = None
         created_at: datetime
         updated_at: datetime
 

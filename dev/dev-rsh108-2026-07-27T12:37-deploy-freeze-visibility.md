@@ -68,7 +68,7 @@ outage: prod ran a 92-day-old image and nothing said so.
 - Verification type: human. RED artifact (stub, deferred):
   `_devx/workstreams/rotation-self-heal/evals/E-7_deploy-freeze-visibility.md`
   (E-7, P2).
-- Full context: `_devx/workstreams/rotation-self-heal/plan.md` §Phase 8.
+- Full context: `_devx/workstreams/rotation-self-heal/plan/agent.md` §Phase 8.
 
 ## Status log
 

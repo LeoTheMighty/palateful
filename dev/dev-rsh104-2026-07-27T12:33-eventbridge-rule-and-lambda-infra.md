@@ -74,7 +74,7 @@ workstream exists to remove.
   here.
 - E-5 is validated by rsh103's unit tests; this story's verification type is
   **human** (live event → Lambda → two UpdateService calls).
-- Full context: `_devx/workstreams/rotation-self-heal/plan.md` §Phase 4.
+- Full context: `_devx/workstreams/rotation-self-heal/plan/agent.md` §Phase 4.
 
 ## Status log
 

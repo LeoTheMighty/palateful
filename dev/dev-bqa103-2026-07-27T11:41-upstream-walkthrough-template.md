@@ -24,7 +24,7 @@ First devx-repo phase (direct commits to devx main — user-locked decision, FR-
 - `writeEngineTemplates` (`src/lib/init-write.ts:883-928`) writes any missing template on both fresh scaffold and upgrade (`init-upgrade.ts:688`) — net-new `qa-walkthrough.md` installs on `devx init` upgrade; no palateful-side fallback. Caveat: templates are write-if-absent forever — later revisions need manual copy (out of scope).
 - Skills mirror via `npm run sync:skills` (`scripts/sync-skills.mjs`).
 - Parallel-safe with bqa101 and bqa102 (different repo).
-- Full context: plan `_devx/workstreams/browser-qa-agent/plan.md` §Phase 3.
+- Full context: plan `_devx/workstreams/browser-qa-agent/plan/agent.md` §Phase 3.
 
 ## Status log
 - 2026-07-27T11:41 — emitted from plan 41ee13 at RED-gate PASS (tests-after phase; E-3's RED artifact `evals/e3_walkthrough_emission.sh` goes green in bqa106 once a walkthrough is emitted; template lands here).

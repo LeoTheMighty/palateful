@@ -19,6 +19,7 @@ from decimal import Decimal
 
 from api.v1.calendar.dependencies import require_calendar_access_async
 from pydantic import BaseModel
+from schemas.json_types import JsonDecimal
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, AsyncEndpoint, success
@@ -212,7 +213,7 @@ class AddMealEventToShoppingList(AsyncEndpoint):
     class ItemResponse(BaseModel):
         id: str
         name: str
-        quantity: Decimal | None = None
+        quantity: JsonDecimal | None = None
         unit: str | None = None
         is_checked: bool
         category: str | None = None

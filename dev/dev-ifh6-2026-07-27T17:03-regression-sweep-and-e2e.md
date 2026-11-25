@@ -20,10 +20,11 @@ End-to-end verification of the hardened import pipeline: transient failures self
 - [ ] e2e: backwards-compat — App Group records written by the pre-epic share extension (no `failed`/`retryable` fields) are still picked up by the reconciler and treated as retryable until first response.
 - [ ] Performance: reconciler tick latency unchanged within ±5ms on a list of 10 pending records (microbenchmark in test).
 - [ ] Spot-check via `audit_errors.py --drill api:APIException` after staging deploy: at least one drill row has a non-null `request_id` from the `/v1/recipe-books/.../import` path.
+- [ ] **Leo's 2026-09-22 ask, attached here rather than given its own story:** verify importing works end to end *at all*, on device — each source type (URL, photo, text/paste, share-extension) from submit to a recipe the user can open. Record what was exercised and what was not; a sweep that quietly skips a source type is worse than none.
 - [ ] Sprint-status updated, retrospective: optional.
 
 ## Technical notes
-- Exercises the full surface delivered by ifh-1..ifh-5; must land last (blocked-by ifh3, ifh4, ifh5 — ifh-1/ifh-2 already on main as 88c04d7 / 51f76f1).
+- Exercises the full surface delivered by ifh-1..ifh-5; must land last (blocked-by ifh5 only now — ifh3 merged `0c379514`, ifh4 merged `c8f700ab`; ifh-1/ifh-2 already on main as 88c04d7 / 51f76f1).
 - The staging spot-check uses `services/api/scripts/audit_errors.py` drill mode (read-only, safe to run freely); requires a staging deploy after the backend stories — see epic "Stories → ifh-6" section.
 - Backwards-compat scenario pins the epic's additive-App-Group-schema guarantee (epic "Infrastructure changes": Swift writes and Dart reads both default missing fields to safe values).
 - Decimal regression e2e complements the unit/wire tests pinned in ifh-2; this one goes through the actual recipe-detail screen render.
@@ -31,3 +32,4 @@ End-to-end verification of the hardened import pipeline: transient failures self
 
 ## Status log
 - 2026-07-27T17:00 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration; predecessor stories ifh-1 (88c04d7), ifh-2 (51f76f1) already on main
+- 2026-09-22T22:15 — took on Leo's end-to-end import verification (his ask alongside the impvis1 report) instead of a fourth story; blocked-by corrected to ifh5 alone.

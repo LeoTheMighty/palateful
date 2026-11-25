@@ -94,8 +94,9 @@ class ImportBatchesNotifier extends AsyncNotifier<ImportBatchesState>
     if (alreadyThere) return;
     state = AsyncData(
       ImportBatchesState(
-        active: batch.isActive ? [batch, ...current.active] : current.active,
-        recentlyCompleted: batch.isActive
+        active:
+            batch.isInFlight ? [batch, ...current.active] : current.active,
+        recentlyCompleted: batch.isInFlight
             ? current.recentlyCompleted
             : [batch, ...current.recentlyCompleted],
       ),
@@ -118,7 +119,10 @@ class ImportBatchesNotifier extends AsyncNotifier<ImportBatchesState>
 
     // Track newly-terminal batches into the recent map
     for (final b in all) {
-      if (b.isActive) {
+      // `isInFlight`, not `isActive`: a batch parked in `partial` whose
+      // ImportJobs have all finished is not in progress, and counting it
+      // produced a badge that could never reach zero (impvis1).
+      if (b.isInFlight) {
         active.add(b);
         // If a batch was previously recent and is now active again (unlikely
         // but possible), drop it from recent.

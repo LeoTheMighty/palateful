@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-20T11:45:00-06:00
 title: 503 only when a restart can fix it — two health-probe cases that drain instead of heal
 from: dev/dev-rsh102-2026-07-27T12:31-credential-aware-health-probe.md
-status: in-progress
+status: done
 owner: /devx-selfheal1-manual
 branch: feat/dev-selfheal1
 ---
@@ -188,3 +188,144 @@ verdict alone and alarm on it, which captures most of the value.
   deserve the same treatment. Case 2's asymmetry is argued in its own section
   at Leo's request rather than bundled with Case 1.
 - 2026-09-22T11:24 — claimed by /devx (hand claim: devx-helper claim pushes to main, which the coordinator has frozen; claim commit held locally, unpushed). Worktree .worktrees/dev-selfheal1 on feat/dev-selfheal1 off origin/main faf35fa1.
+- 2026-09-22T20:10 — phase 2: spec ACs direct (v2 native); 6 ACs;
+  workstream=rotation-self-heal (this is a spec change against its E-2, not a
+  planned phase); red-artifacts=none (rsh102's artifact is GREEN and its
+  registry entry already deleted).
+- 2026-09-22T20:55 — phase 3: Case 1 + Case 2 implemented.
+  `AUTH_MESSAGE_PATTERNS` is now `password authentication failed` alone;
+  `is_missing_password` recognises the no-password case separately so it can
+  be reported loudly at `error` without driving a 503. New verdict
+  `NOT_CONFIGURED`, raised as `DatabaseNotConfigured` from the connect seam so
+  classification stays in `_classify`, keyed on `_database_expected()` —
+  an explicit `ENVIRONMENT` allowlist, not a guess. rsh102's E-2 fixture was
+  updated in place with the reasoning in the diff, not deleted.
+- 2026-09-22T21:50 — phase 4: 3-agent parallel adversarial review launched
+  (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Two reported: 13 + 10
+  findings; ALL in-scope findings fixed in-place. **The Acceptance Auditor had
+  not reported when this commit was written** — its findings are dispositioned
+  in a later status-log line, not silently folded into this one. Most load-bearing: **measured on live
+  drivers, asyncpg given no password md5-hashes the empty string, so the
+  server answers `28P01 password authentication failed` — byte-identical to a
+  rotation.** `/v1/health` runs asyncpg, so removing the message pattern alone
+  fixed Case 1 only on the sync path, and the spec's own named trigger ("a
+  `DATABASE_URL` with no password component") could still drain prod. Added
+  `_url_password_is_blank` + `_downgrade_passwordless_auth_failure`: an
+  `AUTH_FAILED` whose URL carries no usable password downgrades to
+  `UNREACHABLE`; absent or unparseable URLs leave the 503 alone, because a
+  suppressed rotation is the six-day outage. Other fixes: the missing-password
+  signal now VETOES the auth signal (rsh105's retry path builds a chain
+  carrying both phrases) but walks `.orig`/`__cause__` only, never the
+  implicitly-set `__context__`, so an ambient handler cannot suppress a real
+  rotation; `ENVIRONMENT` matching normalised and `production` admitted
+  (SETUP.md's template spelling); `DatabaseNotConfigured` matched anywhere in
+  the chain; `probe_sync`'s absent-URL classify wrapped so nothing escapes as
+  exit 1 ("credentials rotated") mid-incident; CLI exit 3 for
+  `NOT_CONFIGURED`; the new tests patch `ENVIRONMENT` explicitly rather than
+  leaning on conftest's `setdefault`. Re-review clean.
+- 2026-09-22T21:50 — AC #6 (fail-open verdicts alarm) is **not delivered
+  here and cannot be**: the alarm is dfrcp1, blocked on alrt1 + tfgate1 and on
+  rsh102 being deployed. Shipped the enabling half instead — every fail-open
+  branch logs the literal phrase `failing open`, pinned by
+  `test_every_fail_open_verdict_logs_failing_open`, which is what dfrcp1's
+  metric filter matches — and the module docstring now says plainly that no
+  alarm consumes it yet. Leo's call (relayed 2026-09-22): merge now rather
+  than hold, because a permanent drain is worse than a silent failure;
+  dfrcp1 assigned immediately.
+- 2026-09-22T21:50 — two notes for the next reader. (1) Prod blast radius is
+  the inverse of this spec's ranking: ECS never sets `DATABASE_URL`, so an
+  empty injected `DB_PASSWORD` yields Case 2 (`NOT_CONFIGURED`), while Case 1
+  is reachable only via an explicitly passwordless URL. Case 2 is the one
+  prod can actually hit. (2) `/v1/health` now answers `{"status":
+  "degraded"}` for `NOT_CONFIGURED` — a body change beyond the ACs' "still
+  200", made because `status: ok` is the exact claim this workstream exists
+  to stop making. The fail-open verdicts keep `ok`: they are doubt about a
+  possibly-transient condition, this one is a certainty. Nothing parses the
+  field today (`bin/prod-status`, `bin/prod-deploy` use `curl -sf`).
+- 2026-09-22T21:55 — filed from review, out of scope here: `envspell1`
+  (`ENVIRONMENT` has five spellings; `production` silently disables the
+  prod-only 4xx audit writer) and `syncprobe1` (`probe_sync` has no total
+  timeout and no rate limit; rsh107 is about to consume it). Also amended
+  E-2 in `_devx/workstreams/rotation-self-heal/expectations.md`, which still
+  read "503 on both `28P01` and `28000`".
+- 2026-09-22T22:40 — phase 4 (cont.): Acceptance Auditor reported. 5/6 ACs
+  MET, AC #6 deferred to dfrcp1 as recorded above. Its findings, all fixed
+  here: **G1 (HIGH) — the CLI's exit 3 for `NOT_CONFIGURED` would have made
+  rsh107 drain the worker.** rsh107 wires `python -m utils.services.db_probe`
+  as the worker's ECS `CMD-SHELL` health check, ECS treats any non-zero exit
+  as unhealthy, and the worker service has
+  `deployment_minimum_healthy_percent = 0` and no ALB floor — so the verdict
+  this story invented *because a restart cannot fix it* would have become a
+  replacement instruction, this story's own failure mode, on the story it was
+  told to land before. Exit is back to `1` for `AUTH_FAILED` and `0` for
+  everything else, with `test_no_fail_open_verdict_ever_exits_non_zero`
+  pinning the contract against future enum members. G4 — the phrase test
+  covered 4 of 9 emitters while its name read as complete; renamed to its real
+  scope and the other five now have tests, including both router branches.
+  G5/G6/G7 — dfrcp1's stale line references, `plan/agent.md`'s two contracts
+  that this change contradicted, `design/agent.md`'s verdict table, and a test
+  comment claiming the log "pages" when nothing consumes it yet.
+- 2026-09-22T22:40 — two conscious trades, signed off rather than passed over.
+  (1) **The missing-password veto** (G3) fails open when one exception chain
+  carries both phrases, which costs a self-heal if that ever happens for a
+  reason other than rsh105's retry path. Kept, narrowed to `.orig`/`__cause__`
+  so an implicit `__context__` cannot trigger it, and pinned both ways.
+  (2) **The passwordless downgrade is a landmine for rsh105/rsh106** (G2): it
+  is safe only because `_build_database_url()` composes a URL only when
+  `DB_PASSWORD` is truthy. If FR-5's connect-time listener later lets anyone
+  drop `DB_PASSWORD` from the task definition, every URL becomes passwordless
+  and every real rotation would downgrade — the self-heal silently deleted.
+  A comment on `_downgrade_passwordless_auth_failure` says so at the place
+  someone would have to change.
+- 2026-09-22T23:40 — replaced rsh102's `test_only_auth_failed_is_actionable`,
+  which could not fail: `{v for v in ProbeVerdict if v is AUTH_FAILED} ==
+  {AUTH_FAILED}` is true by construction for any enum contents. Its docstring
+  said "guards the fail-open invariant against a careless enum addition", and
+  **this story added `NOT_CONFIGURED` to that enum and it never noticed** —
+  which is the proof it was decorative. Caught by palateful-cc while building
+  dfrcp1's sweep on top of it, after I cited the test to them as if it were
+  verification without opening it. Replaced with a literal member-set
+  assertion (cannot self-satisfy), mutation-verified: adding a member fails
+  it. Actionability is now really pinned at the two places it is decided —
+  the router's 503 (dfrcp1's parse test) and the CLI's exit code, which ECS
+  reads as replace-or-not (`test_no_fail_open_verdict_ever_exits_non_zero`).
+- 2026-09-22T14:20 — merged via PR #52 (squash -> fd732fab).
+- 2026-09-22T14:30 — **deployed and verified in prod.** `palateful-api-prod:66`
+  serving image `api:fd732fab1b71ca4a6f6fff883f620a1fca2f4b1d`, byte-equal to
+  the merge commit; rollout COMPLETED, 1/1 running, task `HEALTHY`. Worker on
+  `:56`, COMPLETED 1/1. Endpoint `200 {"status":"ok","db":"OK"}` across 15
+  requests; 12 rapid probes 0.14-0.31s with no fresh-connection outlier,
+  consistent with the 60s TTL serving a cached verdict. Zero `failing open`
+  and zero `db probe` lines in `/ecs/palateful-api-prod` over 25 minutes —
+  and the window was confirmed non-empty, so that is a clean reading rather
+  than an empty query. The new verdicts themselves were **not** exercised in
+  prod: proving them means removing a credential from a live task, which is
+  breaking prod to watch it fail open. Left for the dev environment and an
+  explicit ask.
+- 2026-09-22T14:30 — measured against the merged probe on a live pg16, the
+  table the follow-up work turns on:
+
+      wrong password       -> AUTH_FAILED    (correct: this is the rotation)
+      NO password          -> UNREACHABLE
+      EMPTY password ''    -> UNREACHABLE
+      whitespace pwd ' '   -> UNREACHABLE
+      correct password     -> OK
+      absent URL (prod)    -> NOT_CONFIGURED
+
+  On asyncpg all three passwordless inputs are byte-identical to a wrong
+  password. `ncfgverdict1` argues rows 2-4 should read `NOT_CONFIGURED`.
+- 2026-09-22T14:30 — `ncfgverdict1` was filed independently by a peer while
+  this session held an unpushed copy; theirs is richer (it carries the
+  alarm-in-this-story AC and 0a's softening of the never-emitted clause), so
+  the local duplicate was dropped rather than merged. `envspell1` and
+  `syncprobe1` were filed from this story's review and are on `main`.
+- 2026-09-22T14:30 — **shared test Postgres, ownership recorded.** This
+  session started `selfheal1-pg` (`pgvector/pgvector:pg16`, `localhost:5432`,
+  db `test`, postgres/postgres) for the local gates and left it running
+  deliberately: port 5432 is not a choice (`migrator:migrate-test` hardcodes
+  it), peers may have come to depend on it without knowing it is mine, and
+  stopping it mid-run would break them. Test migrations only, no real data;
+  `docker stop selfheal1-pg` is safe once the lane is quiet. Note
+  `test_db_credentials_live_drivers.py` **skips silently** when nothing is
+  reachable there, so removing it does not fail a suite — it quietly removes
+  the measurement that changed this story.

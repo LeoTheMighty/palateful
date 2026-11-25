@@ -1,0 +1,38 @@
+# G12 — silent-catch baseline for `app/lib/core/**`.
+#
+# Format: `path:count`. The count is how many catch blocks in that file
+# neither rethrow/throw, nor call showMutationFailureSnackbar /
+# emitMutation / ErrorReporter.report / ErrorReporter.reportPreAuth.
+#
+# Counts, not `file:lineno` like tools/silent-catch-allowlist.txt: line
+# numbers rot on any edit above the block, and the allowlist's own header
+# admits it ("Line numbers drift across refactors"). A count only moves
+# when a catch is added or fixed.
+#
+# The ratchet, enforced by tools/no-silent-catch-check.sh:
+#   * over the count  → CI fails. A new silent catch in core.
+#   * under the count → CI fails. You fixed one; lower the number in the
+#                       same commit, so the file can only shrink.
+#   * file gone       → CI fails. Drop the row.
+#
+# This is a debt register, NOT a list of blessed swallows. Every row here
+# is a failure mode nobody can see in production yet. Delete rows by
+# fixing the catch (report it or surface it), never by raising a number.
+#
+# Seeded 2026-09-22 by authrep1 from the auth-path reporting work; the
+# auth files are absent because their catches now report.
+app/lib/core/services/client_latency_ingest.dart:2
+app/lib/core/services/cook_timer_notification_service.dart:6
+app/lib/core/services/error_reporter.dart:1
+app/lib/core/services/firebase_http_metric_interceptor.dart:2
+app/lib/core/services/live_activity_service.dart:6
+app/lib/core/services/pending_imports_reconciler.dart:1
+app/lib/core/services/perf_flags_service.dart:3
+app/lib/core/services/push_notification_service.dart:1
+app/lib/core/services/recipe_cache_service.dart:8
+app/lib/core/services/request_dedup_interceptor.dart:2
+app/lib/core/services/share_intent_handler.dart:2
+app/lib/core/services/spotlight_index_service.dart:3
+app/lib/core/services/web_perf_bridge.dart:1
+app/lib/core/services/widget_data_service.dart:5
+app/lib/main.dart:4

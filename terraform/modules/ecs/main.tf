@@ -560,3 +560,11 @@ output "api_task_definition_arn" {
 output "worker_task_definition_arn" {
   value = aws_ecs_task_definition.worker.arn
 }
+
+# Consumed by the fail-open alarm's metric filter (dfrcp1). Exported rather
+# than spelled out at the call site so the filter cannot end up pointed at a
+# log group name that no longer exists, and so Terraform orders the group
+# before the filter that reads it.
+output "api_log_group_name" {
+  value = aws_cloudwatch_log_group.api.name
+}

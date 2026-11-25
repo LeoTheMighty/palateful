@@ -24,7 +24,7 @@ Fill the devx O-4 slot: the attended exploratory `/devx-test` skill, its dispatc
 - Cross-repo story: work lands in `~/personal/devx` (direct to its main). Sequenced after bqa103 (same repo; single version bump at end of this story).
 - Skill-body scope enforcement (one surface/story per invocation, no chained runs, `docs/QA.md:215-220`) + per-day cap = the E-4/G-5 cost guardrail.
 - FR-7 propagation is plain doc commits — no `devx revise` cascade; pln104 satisfied by lock (palateful `decisions/2026-07-27-hybrid-qa-driver.md`) → compare → update → this story.
-- Full context: plan `_devx/workstreams/browser-qa-agent/plan.md` §Phase 4.
+- Full context: plan `_devx/workstreams/browser-qa-agent/plan/agent.md` §Phase 4.
 
 ## Status log
 - 2026-07-27T11:42 — emitted from plan 41ee13 at RED-gate PASS (tests-after phase).

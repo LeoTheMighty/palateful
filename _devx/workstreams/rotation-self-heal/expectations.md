@@ -29,7 +29,19 @@
   so ECS replaces the task.
 - **Threshold:** 503 returned on both `28P01` and `28000`; response body
   identifies the failure as credential-related.
-- **Verified by:** `services/api/tests/test_health.py`
+- **Amended by selfheal1 (2026-09-22):** `28000` alone is no longer
+  sufficient, and neither is the message `no password supplied`. Both are
+  raised for conditions a task replacement cannot fix (pg_hba rejection,
+  missing role, an empty `DB_PASSWORD`), and with
+  `deployment_minimum_healthy_percent = 0` a 503 on those drains the
+  service permanently. `28000` now requires a corroborating "password
+  authentication failed" message (landed inside rsh102); the no-password
+  case classifies `UNREACHABLE` and alarms. Measured driver behaviour
+  behind the change:
+  `libraries/utils/test/test_db_credentials_live_drivers.py`.
+- **Verified by:** `services/api/tests/test_health_credential_probe.py`
+  (the tests moved there in rsh102; `test_health.py` is the pre-FR-2
+  baseline)
 
 ## E-3: Transient database failures do not fail the health check
 

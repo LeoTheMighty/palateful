@@ -1,3 +1,4 @@
+import '../../../core/router/activity_routes.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -88,7 +89,7 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: GestureDetector(
-        onTap: () => context.push('/activity?tab=imports'),
+        onTap: () => context.push(ActivityRoutes.hubPath),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
