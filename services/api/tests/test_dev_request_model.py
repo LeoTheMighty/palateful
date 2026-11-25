@@ -16,6 +16,7 @@ directly.
 """
 
 import importlib.util
+import json
 import logging
 import re
 import uuid
@@ -360,6 +361,9 @@ class TestCreateRefusals:
             {"title": "T", "body": "\x00\x07"},
             {"title": "T", "body": "B", "done_when": "   "},
             {"title": 5, "body": "B"},
+            {"title": "a\ud800b", "body": "B"},
+            {"title": "T", "body": "x\udfffy"},
+            {"title": "T", "body": "B", "done_when": "\ud83d"},
         ],
         ids=[
             "status",
@@ -377,12 +381,33 @@ class TestCreateRefusals:
             "blank-body",
             "blank-done-when",
             "non-string-title",
+            "lone-surrogate-title",
+            "lone-surrogate-body",
+            "lone-surrogate-done-when",
         ],
     )
     def test_is_422_and_writes_nothing(self, client, admin, mock_async_db, payload):
-        resp = client.post(CREATE_PATH, json=payload)
+        # Serialized by hand: a lone surrogate survives json.dumps' default
+        # ASCII escaping ("\ud800"), which is exactly what a client can send.
+        resp = client.post(
+            CREATE_PATH,
+            content=json.dumps(payload),
+            headers={"content-type": "application/json"},
+        )
         assert resp.status_code == 422, resp.text
         assert _added(mock_async_db) == []
+
+    def test_unencodable_text_names_the_field_and_spends_no_allowance(
+        self, client, admin, mock_async_db
+    ):
+        raw = json.dumps({"title": "T", "body": "x\udfffy"})
+        for _ in range(6):
+            resp = client.post(
+                CREATE_PATH, content=raw, headers={"content-type": "application/json"}
+            )
+            assert resp.status_code == 422, resp.text
+        assert resp.json()["data"] == {"error": "invalid_text", "field": "body"}
+        assert client.post(CREATE_PATH, json={"title": "T", "body": "B"}).status_code == 201
 
 
 class TestRateLimit:

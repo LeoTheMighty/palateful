@@ -91,13 +91,41 @@ def _normalized(value: str, field: str, max_length: int) -> str:
     return value
 
 
+def _unencodable_field(params: CreateDevRequest.Params) -> str | None:
+    """The first field with no UTF-8 form, if any.
+
+    JSON can carry a lone surrogate (``"\\ud800"``). FR-2 keeps it — it is
+    category Cs, not Cc/Cf — but such text can be neither hashed nor stored.
+    Checked here rather than in a validator because FastAPI's 422 body
+    echoes the rejected input, which cannot be encoded either, so a
+    validator's 422 becomes a 500 on the way out.
+    """
+    for field in ("title", "body", "done_when"):
+        value = getattr(params, field)
+        try:
+            if value is not None:
+                value.encode("utf-8")
+        except UnicodeEncodeError:
+            return field
+    return None
+
+
 class CreateDevRequest(AsyncEndpoint):
     """Create one `submitted` request for the calling admin."""
 
     async def execute(self, params: CreateDevRequest.Params):
         user: User = self.user
 
-        # Rate-limit FIRST: an over-limit call creates no row.
+        bad_field = _unencodable_field(params)
+        if bad_field is not None:
+            return failure(
+                status=422,
+                error_code=ErrorCode.INVALID_REQUEST.value,
+                error_message=f"{bad_field} is not valid Unicode text",
+                data={"error": "invalid_text", "field": bad_field},
+            )
+
+        # Rate-limit next: an over-limit call creates no row.
         allowed, retry_after = _check_rate_limit(str(user.id))
         if not allowed:
             logger.info(
