@@ -1,0 +1,41 @@
+# Vision Extraction Evaluation Test Cases (bugs-imp-pho-7)
+#
+# Grades `extract_recipe_from_image` (gpt-4o-mini vision) at the same bar
+# as the text suite: recipe_count_accuracy_avg >= 0.8 on multi_recipe-tagged
+# cases, plus the shared field/ingredient/instruction metrics.
+#
+# Each image is a render of the same-named text fixture, so an image case
+# and its text twin share one expected JSON. Regenerate the PNGs with:
+#     poetry run python scripts/generate_image_fixtures.py
+#
+# Every vision case is a live gpt-4o-mini call. Keep this set small.
+
+cases:
+  - id: banana_bread
+    image: ../../fixtures/images/banana_bread.png
+    expected: ../../fixtures/expected/banana_bread.json
+    tags: [single_recipe, image]
+
+  - id: simple_pasta
+    image: ../../fixtures/images/simple_pasta.png
+    expected: ../../fixtures/expected/simple_pasta.json
+    tags: [single_recipe, image]
+
+  - id: multi_recipe_facing_pages
+    image: ../../fixtures/images/multi_recipe_facing_pages.png
+    expected: ../../fixtures/expected/multi_recipe_facing_pages.json
+    tags: [multi_recipe, image]
+
+  - id: multi_recipe_side_by_side
+    image: ../../fixtures/images/multi_recipe_side_by_side.png
+    expected: ../../fixtures/expected/multi_recipe_side_by_side.json
+    tags: [multi_recipe, image]
+
+  - id: multi_recipe_three_panel
+    image: ../../fixtures/images/multi_recipe_three_panel.png
+    expected: ../../fixtures/expected/multi_recipe_three_panel.json
+    tags: [multi_recipe, image]
+
+config:
+  timeout_seconds: 120
+  skip_tags: []
