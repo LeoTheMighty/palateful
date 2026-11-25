@@ -60,7 +60,15 @@ class PerfNavigatorObserver extends NavigatorObserver {
 
   /// Debug-only latch so an unregistered ingest is reported once rather
   /// than on every route push.
-  bool _warnedMissingIngest = false;
+  ///
+  /// **Static**: one observer is now constructed per Navigator (six of
+  /// them), and a per-instance latch would turn one warning into six.
+  static bool _warnedMissingIngest = false;
+
+  /// Reset the warn-once latch. Tests only — a latch set by an earlier
+  /// case would silence the warning this one is asserting on.
+  @visibleForTesting
+  static void resetWarnLatch() => _warnedMissingIngest = false;
 
   WidgetsBinding get _widgetsBinding => _binding ?? WidgetsBinding.instance;
 

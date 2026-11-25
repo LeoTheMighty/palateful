@@ -67,6 +67,10 @@ dependencies:
   timezone: ^0.9.4
   flutter_timezone: ^1.0.4
   shared_preferences: ^2.3.4
+  # Web-only URL strategy (usePathUrlStrategy). Imported behind a
+  # `dart.library.html` conditional so mobile builds never see it.
+  flutter_web_plugins:
+    sdk: flutter
   connectivity_plus: ^6.1.4
   share_plus: ^10.1.4
   file_picker: ^10.3.10
