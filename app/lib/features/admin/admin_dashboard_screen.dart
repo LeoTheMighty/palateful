@@ -7,6 +7,7 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'admin_dev_request_new_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -208,6 +209,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             const SizedBox(height: 8),
             _buildFeedbackTile(colorScheme, textTheme),
+            const SizedBox(height: 8),
+            _buildNavTile(
+              key: const Key('admin_dev_request_tile'),
+              icon: Icons.edit_note_outlined,
+              label: 'Request a change',
+              subtitle: 'Describe a change for Leo to take on',
+              onTap: () => context.push(AdminDevRequestNewScreen.routePath),
+              colorScheme: colorScheme,
+              textTheme: textTheme,
+            ),
 
             const SizedBox(height: 32),
             Text(
@@ -833,6 +844,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Widget _buildNavTile({
+    Key? key,
     required IconData icon,
     required String label,
     required String subtitle,
@@ -844,6 +856,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
+        key: key,
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
