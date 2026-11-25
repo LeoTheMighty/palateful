@@ -1,25 +1,73 @@
 #!/bin/bash
 # Run a local Python script inside the prod API ECS task.
-# Usage: bin/prod-script path/to/script.py
+# Usage: bin/prod-script path/to/script.py [args...]
 #
 # The script runs with `db`, `database`, and every model + enum from
 # libraries/utils/utils preloaded into the namespace — same context as
 # bin/prod-console, but non-interactive.
 #
+# Arguments after the script reach it as sys.argv[1:] (sys.argv[0] is the
+# script path). They are an instruction that runs with prod credentials, so
+# they cross as data, never as code: JSON-encoded, then base64'd into the
+# same payload as the script, and decoded by the prelude. No argument is
+# ever interpolated into the shell command or into Python source. Before
+# anything is sent, an argument is REFUSED (exit 1, AWS never called) if it
+#   - is not valid UTF-8,
+#   - contains a control or format character (Unicode Cc/Cf: newline, tab,
+#     ESC, zero-width, bidi override, ...), or
+#   - takes the encoded argument list past ARGV_MAX_BYTES.
+# Arguments are ids, hashes and enum codes; none of those needs a control
+# character or kilobytes. Base64 is not encryption: never pass a secret.
+# With no arguments the script sees sys.argv[1:] == [] and no extra local
+# tool is needed. Tests: services/api/tests/test_dev_requests_channel.py.
+#
 # Requires: AWS CLI v2 with Session Manager plugin installed.
 #   brew install --cask session-manager-plugin
+#   python3 on PATH, only when arguments are given.
 
 set -euo pipefail
 
 SCRIPT="${1:-}"
 if [[ -z "$SCRIPT" ]]; then
-  echo "usage: $0 <script.py>" >&2
+  echo "usage: $0 <script.py> [args...]" >&2
   exit 1
 fi
 if [[ ! -f "$SCRIPT" ]]; then
   echo "ERROR: $SCRIPT not found" >&2
   exit 1
 fi
+shift
+
+ARGV_MAX_BYTES=4096
+# base64("[]"): the no-argument case needs no encoder.
+ARGS_B64="W10="
+if [[ $# -gt 0 ]]; then
+  # -I: isolated mode, so no PYTHON* variable and no module in the current
+  # directory can change what this encoder does. Errors name the argument's
+  # position, never its value.
+  ARGS_B64=$(python3 -I -c '
+import base64, json, sys, unicodedata
+args = sys.argv[2:]
+limit = int(sys.argv[1])
+for pos, arg in enumerate(args, 1):
+    try:
+        arg.encode("utf-8")
+    except UnicodeEncodeError:
+        sys.exit(f"REFUSED: argument {pos} is not valid UTF-8")
+    if any(unicodedata.category(ch) in ("Cc", "Cf") for ch in arg):
+        sys.exit(f"REFUSED: argument {pos} contains a control or format character")
+payload = json.dumps(args, ensure_ascii=True, separators=(",", ":"))
+if len(payload) > limit:
+    sys.exit(f"REFUSED: arguments encode to {len(payload)} bytes; the limit is {limit}")
+print(base64.b64encode(payload.encode("ascii")).decode("ascii"))
+' "$ARGV_MAX_BYTES" "$@") || exit 1
+fi
+# Whatever produced it, only base64 text may be substituted into the prelude.
+if [[ ! "$ARGS_B64" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
+  echo "REFUSED: argument encoding produced unexpected output" >&2
+  exit 1
+fi
+ARGV0_B64=$(printf '%s' "$SCRIPT" | base64 | tr -d '\n')
 
 CLUSTER="palateful-prod"
 SERVICE="palateful-api-prod"
@@ -59,6 +107,16 @@ SENTINEL="__PROD_SCRIPT_END_$(openssl rand -hex 8)__"
 # $SENTINEL below — keep the heredoc quoted so Python source isn't
 # shell-expanded.
 read -r -d '' PRELUDE_TEMPLATE <<'PY' || true
+# First statement: the script's argv. Both placeholders are replaced with
+# base64 text only (checked above), so nothing an operator types can reach
+# Python source. Under `python -c`, sys.argv would otherwise be ['-c'].
+import base64 as _prod_script_b64
+import json as _prod_script_json
+import sys
+sys.argv = [
+    _prod_script_b64.b64decode("__PROD_SCRIPT_ARGV0__").decode("utf-8", "replace")
+] + _prod_script_json.loads(_prod_script_b64.b64decode("__PROD_SCRIPT_ARGS__").decode("ascii"))
+
 import atexit
 import enum
 import importlib
@@ -141,6 +199,8 @@ PY
 # heredoc) keeps the Python source readable and avoids accidental
 # expansion of unrelated `$` sequences.
 PRELUDE="${PRELUDE_TEMPLATE//__PROD_SCRIPT_SENTINEL__/$SENTINEL}"
+PRELUDE="${PRELUDE//__PROD_SCRIPT_ARGV0__/$ARGV0_B64}"
+PRELUDE="${PRELUDE//__PROD_SCRIPT_ARGS__/$ARGS_B64}"
 
 # Concatenate prelude + user script, base64 so the payload survives
 # shell quoting and Session Manager transport.
