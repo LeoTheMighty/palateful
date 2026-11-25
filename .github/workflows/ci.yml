@@ -173,6 +173,14 @@ jobs:
       - name: Absence-alert self-test (absal1 guard)
         run: bash tools/absence-alert-self-test.sh
 
+      # stptr1 — a rename sweep can only fix files that exist when it runs.
+      # A spec written afterwards from an older template carries a stale
+      # path, and because the file is new there is no conflict to raise, so
+      # it merges silently. Fails on a pointer to a migrated workstream
+      # artifact; exempts `## Status log` history and `evals/` outputs.
+      - name: No stale workstream pointers (stptr1 guard)
+        run: python3 tools/stale-pointer-check.py
+
   test:
     runs-on: ubuntu-latest
     # Ceiling, not a target: observed max 29m38s — max is the 4-commit accumulated range of 2026-09-24, not a single-PR run.
