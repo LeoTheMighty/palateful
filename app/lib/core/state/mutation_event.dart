@@ -657,6 +657,32 @@ class PantryItemRemoved extends MutationEvent {
   MutationCategory get category => MutationCategory.pantryItem;
 }
 
+/// The server changed this pantry and the client did not perform the
+/// change, so it has no item payload to assert — only the knowledge that
+/// what it is showing is stale.
+///
+/// Emitted when a shopping-list check-off auto-adds to the pantry
+/// server-side (`shopping_list_screen.dart`). Deliberately carries no
+/// `item`: synthesising one would mean the client claiming a shape it
+/// never received. Consumers refetch instead.
+///
+/// Rule of thumb for which pantry event to emit: if the client performed
+/// the mutation and holds the response, emit the specific
+/// [PantryItemAdded] / [PantryItemUpdated] / [PantryItemRemoved]. If the
+/// server did it, emit this and let the listener re-read.
+class PantryChangedExternally extends MutationEvent {
+  const PantryChangedExternally({required this.pantryId, required this.reason});
+
+  final String pantryId;
+
+  /// Why the pantry changed, for logs and tests — e.g.
+  /// `'shopping-list check-off auto-add'`. Not user-visible.
+  final String reason;
+
+  @override
+  MutationCategory get category => MutationCategory.pantryItem;
+}
+
 /// Compatibility alias for foundation-era stubs still referenced by the
 /// home-screen reactivity test. Treat as deprecated — new code emits
 /// [PantryItemAdded].

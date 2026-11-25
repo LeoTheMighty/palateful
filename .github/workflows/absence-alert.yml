@@ -1,0 +1,240 @@
+# absal1 (U3) — alert when an expected signal goes silent.
+#
+# WHO THIS HAS TO REACH
+# ---------------------
+# The channel is **email via SNS**. GitHub Actions email notifications are
+# deliberately switched off for this account (too noisy across repos), so a red
+# scheduled run reaches nobody — that is how deploy-freshness.yml failed 52
+# consecutive times against 2 successes without anyone hearing it. It was not
+# being ignored; the path could not reach him at all. So the watcher lives in
+# GitHub, but **the verdict leaves GitHub**: a firing verdict is published to
+# the alert topic, and the job also fails so the run stays discoverable.
+# Reconnaissance and Leo's answers: PR #55.
+#
+# WHAT IT CHECKS (each fatal on its own)
+#   A. Telemetry silence — the client mirror (`POST /v1/users/me/client-errors`)
+#      appears in the API access log within BASELINE_DAYS but not within
+#      MAX_SILENCE_DAYS, while /v1/health reports the API up. The baseline is
+#      what makes this an ABSENCE check rather than an assertion: with no
+#      baseline it reports itself inert instead of crying wolf, and silence
+#      while the API is DOWN belongs to a different alert.
+#   B. Channel death — the alert topic has no CONFIRMED subscription. Counting
+#      subscriptions is not enough: `list-subscriptions-by-topic` also returns
+#      unconfirmed ones, whose SubscriptionArn is the literal string
+#      `PendingConfirmation`. Created-but-never-confirmed looks like coverage
+#      in the console and delivers nothing, and since nobody has subscribed
+#      yet it is the LIKELY FIRST STATE, not a hypothesis. The two states get
+#      different messages because they want different actions: "click the link
+#      you were sent" is not "nobody is subscribed".
+#
+# WHY THE DETECTOR IS OUTSIDE THE DB AND THE TOKEN PATH
+#   The mirror endpoint is auth-gated and the client swallows its own delivery
+#   failures (app/lib/core/services/error_reporter.dart), so uvicorn's access
+#   log in /ecs/palateful-api-prod is the only DB-free, token-free evidence
+#   that it is still being called.
+#
+# ACCEPTED LIMITATION (Leo, 2026-09-22), quoted from PR #55:
+#
+#     If the SNS email subscription is deleted, every alert path goes silent
+#     simultaneously and nothing warns.
+#
+#   This check inherits that bind and does not close it. Check B deliberately
+#   does NOT publish its own finding to the topic: with no confirmed
+#   subscriber, publishing "this topic has no confirmed subscriber" into that
+#   topic is the void describing itself. What B buys is narrower, and worth
+#   stating exactly: the failure becomes RECORDED rather than invisible, and
+#   PendingConfirmation gets caught. Closing the gap needs a second channel
+#   Leo reads, and there is not one today.
+#
+#   A dead WATCHER is a different failure from a dead subscription, and the
+#   heartbeat below covers it: every run publishes to HEARTBEAT_TOPIC_NAME, a
+#   subscriber-less topic, so a CloudWatch alarm on its
+#   NumberOfMessagesPublished fires when this workflow stops reporting —
+#   including when it dies at `configure-aws-credentials`, which is exactly
+#   how deploy-freshness died. That topic and that alarm are Terraform and are
+#   NOT created here; until they exist this step says so on every run rather
+#   than implying cover it does not have.
+name: absence-alert
+
+on:
+  schedule:
+    # 12h apart, same reasoning as deploy-freshness.yml: GitHub's scheduler
+    # drifts, and a single daily slot turns a 24h threshold into a coin flip.
+    - cron: '30 15 * * *'
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+    inputs:
+      simulate-silence:
+        description: 'TEST ONLY — pretend the mirror has been silent (proves the alert fires)'
+        type: boolean
+        default: false
+      simulate-no-subscriptions:
+        description: 'TEST ONLY — pretend the alert topic has no confirmed subscriptions'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  LOG_GROUP: /ecs/palateful-api-prod
+  MIRROR_PATH: /v1/users/me/client-errors
+  HEALTH_URL: https://api.palateful.app/v1/health
+  TOPIC_NAME: palateful-prod-alerts
+  # Subscriber-less topic that exists only so a CloudWatch alarm can watch this
+  # workflow's heartbeat. Not created here; Terraform owns it.
+  HEARTBEAT_TOPIC_NAME: palateful-prod-heartbeat
+  # Must stay below the log group's 30-day retention
+  # (terraform/modules/ecs/main.tf), or "no lines found" would mean
+  # "expired", not "silent".
+  MAX_SILENCE_DAYS: 3
+  # The window that establishes whether the signal exists at all. Also below
+  # the log group's 30-day retention.
+  BASELINE_DAYS: 25
+
+jobs:
+  check-absence:
+    runs-on: ubuntu-latest
+    # The AWS secrets are scoped to the production environment, which carries
+    # no reviewer rule — so an unattended scheduled run still gets them. Same
+    # arrangement as deploy-freshness.yml.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check expected telemetry and the alert channel
+        env:
+          SIMULATE_SILENCE: ${{ inputs.simulate-silence }}
+          SIMULATE_NO_SUBSCRIPTIONS: ${{ inputs.simulate-no-subscriptions }}
+        run: |
+          set -uo pipefail
+          failed=0
+
+          topic_arn=$(aws sns list-topics \
+            --query "Topics[?ends_with(TopicArn, ':$TOPIC_NAME')].TopicArn | [0]" \
+            --output text 2>/dev/null || echo "None")
+
+          # ── B first: can anything this job says actually arrive? ────────
+          confirmed=0
+          if [ "$topic_arn" = "None" ] || [ -z "$topic_arn" ]; then
+            echo "::error title=Alert topic missing::No SNS topic named $TOPIC_NAME. Every alarm that publishes to it is delivering nowhere."
+            failed=1
+          elif [ "${SIMULATE_NO_SUBSCRIPTIONS:-false}" = "true" ]; then
+            echo "::notice title=Simulated::Pretending the topic has no confirmed subscription."
+          else
+            confirmed=$(aws sns list-subscriptions-by-topic --topic-arn "$topic_arn" \
+              --query 'length(Subscriptions[?starts_with(SubscriptionArn, `arn:`)] || `[]`)' \
+              --output text 2>/dev/null || echo "QUERY_FAILED")
+          fi
+
+          if [ "$confirmed" = "QUERY_FAILED" ]; then
+            echo "::error title=Channel check could not run::list-subscriptions-by-topic failed for $topic_arn. This is NOT a verdict about the channel — the check could not see."
+            confirmed=0
+            failed=1
+          elif [ "${confirmed:-0}" -lt 1 ] 2>/dev/null && [ "$topic_arn" != "None" ]; then
+            # Distinguish "created but never confirmed" from "nobody
+            # subscribed": they read the same in a count and want opposite
+            # actions. Deliberately NOT published to the topic — see the
+            # accepted limitation in the header.
+            pending=$(aws sns get-topic-attributes --topic-arn "$topic_arn" \
+              --query 'Attributes.SubscriptionsPending' --output text 2>/dev/null || echo "?")
+            if [ "$pending" != "?" ] && [ "${pending:-0}" -ge 1 ] 2>/dev/null; then
+              echo "::error title=Subscription created but never confirmed::$TOPIC_NAME has $pending PENDING and 0 CONFIRMED subscriptions. Someone subscribed and did not click the confirmation link — the console shows a subscription and nothing is delivered. Click the link in that email. See MANUAL.md."
+            else
+              echo "::error title=Alert channel has no confirmed subscriber::$TOPIC_NAME has 0 confirmed subscriptions (pending: $pending). Every alarm reaching ALARM publishes into a void. The subscription is created by hand and deliberately not in Terraform (terraform/modules/alerts/main.tf:8-16), so nothing recreates it. See MANUAL.md."
+            fi
+            failed=1
+          elif [ "${confirmed:-0}" -ge 1 ] 2>/dev/null; then
+            echo "Alert channel OK: $TOPIC_NAME has $confirmed confirmed subscription(s)."
+          fi
+
+          # publish_verdict <subject> <body> — the verdict has to LEAVE GitHub,
+          # and only a confirmed subscriber makes that possible.
+          publish_verdict() {
+            if [ "${confirmed:-0}" -ge 1 ] 2>/dev/null; then
+              if aws sns publish --topic-arn "$topic_arn" \
+                   --subject "$1" --message "$2" >/dev/null 2>&1; then
+                echo "Verdict published to $TOPIC_NAME."
+              else
+                echo "::error title=Verdict could not be published::sns publish to $TOPIC_NAME failed. The finding below reached nobody."
+              fi
+            else
+              echo "::warning title=Verdict not delivered::No confirmed subscriber on $TOPIC_NAME, so this finding stays in the run log only."
+            fi
+          }
+
+          # ── A. Is the client mirror still being called? ─────────────────
+          # "Expected" is established from the log itself: RECENT is the last
+          # MAX_SILENCE_DAYS, BASELINE the last BASELINE_DAYS. Measured
+          # 2026-09-22: the mirror path has ZERO hits in 30 days and prod logs
+          # no POSTs at all in 3, so a flat "0 hits = alert" rule would ship
+          # permanently red and teach everyone to ignore it.
+          count_hits() {  # count_hits <days-back>
+            local start_ms=$(( ($(date +%s) - $1 * 86400) * 1000 ))
+            aws logs filter-log-events \
+              --log-group-name "$LOG_GROUP" \
+              --start-time "$start_ms" \
+              --filter-pattern "\"$MIRROR_PATH\"" \
+              --limit 1 --no-paginate \
+              --query 'length(events || `[]`)' --output text 2>/dev/null \
+              || echo "QUERY_FAILED"
+          }
+
+          if [ "${SIMULATE_SILENCE:-false}" = "true" ]; then
+            echo "::notice title=Simulated::Pretending the mirror went silent after a healthy baseline."
+            hits=0; baseline=1
+          else
+            hits=$(count_hits "$MAX_SILENCE_DAYS")
+            baseline=$(count_hits "$BASELINE_DAYS")
+          fi
+
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          if [ "$hits" = "QUERY_FAILED" ] || [ "$baseline" = "QUERY_FAILED" ]; then
+            # A failed query is not evidence of silence. Say so and fail: a
+            # detector that cannot see is not a detector that is happy.
+            msg="filter-log-events failed against $LOG_GROUP. This is NOT a 'no telemetry' verdict — the check could not see. Run: $run_url"
+            echo "::error title=Absence check could not run::$msg"
+            publish_verdict "[palateful] absence check could not run" "$msg"
+            failed=1
+          elif [ "${hits:-0}" -eq 0 ] 2>/dev/null && [ "${baseline:-0}" -eq 0 ] 2>/dev/null; then
+            echo "::warning title=Absence check is inert — no baseline::$MIRROR_PATH has no hits in ${BASELINE_DAYS}d either, so silence proves nothing yet. This half starts detecting once the client mirror reports at all (see dev/dev-clidet1-*, dev/dev-authrep1-*). The channel check above still applies."
+          elif [ "${hits:-0}" -eq 0 ] 2>/dev/null; then
+            health_body=$(curl -fsS --max-time 10 "$HEALTH_URL" 2>/dev/null || echo "HEALTH_UNREACHABLE")
+            case "$health_body" in
+              *'"status":"ok"'*)
+                msg="$MIRROR_PATH was seen in the last ${BASELINE_DAYS}d but not in the last ${MAX_SILENCE_DAYS}d, while $HEALTH_URL reports the API up. The client error mirror has stopped reporting and nothing else would have said so. Health: $health_body. Run: $run_url"
+                echo "::error title=Expected telemetry went silent::$msg"
+                publish_verdict "[palateful] client telemetry went silent" "$msg"
+                failed=1
+                ;;
+              *)
+                echo "::warning title=Telemetry silent, API not healthy::No $MIRROR_PATH request for ${MAX_SILENCE_DAYS}d, but the API is not reporting healthy ($health_body). Silence is expected while the API is down; the API alarm owns this one."
+                ;;
+            esac
+          else
+            echo "Client mirror active: $MIRROR_PATH seen in the last ${MAX_SILENCE_DAYS}d."
+          fi
+
+          # ── Heartbeat: cover for a DEAD WATCHER ─────────────────────────
+          hb_arn=$(aws sns list-topics \
+            --query "Topics[?ends_with(TopicArn, ':$HEARTBEAT_TOPIC_NAME')].TopicArn | [0]" \
+            --output text 2>/dev/null || echo "None")
+          if [ "$hb_arn" = "None" ] || [ -z "$hb_arn" ]; then
+            echo "::warning title=No dead-watcher cover::Heartbeat topic $HEARTBEAT_TOPIC_NAME does not exist, so nothing notices if this workflow stops running — the way deploy-freshness died. Needs the Terraform half: the topic plus a CloudWatch alarm on NumberOfMessagesPublished < 1 over a window longer than this schedule."
+          elif aws sns publish --topic-arn "$hb_arn" \
+                 --subject "absence-alert heartbeat" \
+                 --message "absence-alert ran at $(date -u +%FT%TZ); failing=$failed" >/dev/null 2>&1; then
+            echo "Heartbeat published to $HEARTBEAT_TOPIC_NAME."
+          else
+            echo "::warning title=Heartbeat failed::Could not publish to $HEARTBEAT_TOPIC_NAME; the dead-watcher alarm may fire."
+          fi
+
+          exit "$failed"

@@ -136,9 +136,38 @@ out.**
   misspell it. **Whatever guard this spec adds should be checkable by
   something that can see an absence** — otherwise it joins the same blind
   spot.
-- The blast radius here is larger than e2echat1's. That one returns a canned
-  chat string to a real user. This one runs a recipe-creation suite against
-  production data with authentication bypassed.
+- **CORRECTION (2026-09-27): the blast radius stated in the first draft was
+  wrong, and the corrected one is duller but still real.** The original text
+  said this "runs a recipe-creation suite against production data with
+  authentication bypassed." **It cannot.** The server-side bypass is guarded
+  at both sites in `services/api/src/dependencies.py` (:108 and :327):
+
+  ```python
+  if (settings.e2e_test_mode
+          and settings.environment in ("development", "test")
+          and token == _E2E_TOKEN):
+  ```
+
+  Production runs `ENVIRONMENT=prod` with `E2E_TEST_MODE` absent, so the
+  fixed token **401s** — two independent reasons. Credit to palateful-4f for
+  catching it; verified here by reading both guard sites on `origin/main`.
+
+  **The real hazard, which the fix is still worth making:** a forgotten
+  `--dart-define` produces a bundle **pointing at production** that falls
+  back to ordinary auth. Whoever is signed in then acts on **real data while
+  believing they are in a sandbox** — editing or deleting a real recipe in
+  what looks like a local test run. No bypass required for that, and the
+  E2E suite's own steps create books and drive a recipe wizard.
+
+  **So the threat model is "wrong target, real credentials", not
+  "authentication bypassed".** Anyone implementing this should build against
+  the former; a guard designed to stop a bypass that cannot arm would protect
+  the wrong thing.
+
+- Ranking against e2echat1 is therefore **not** clear-cut, and the first
+  draft's confident ordering should not be repeated. e2echat1 returns a
+  canned chat string to a real user; this one risks a human mutating
+  production data under a sandbox assumption. Different shapes, both real.
 
 ## Status log
 - 2026-09-24T21:00 — filed at palateful-41's request after the E2E-suite
@@ -146,3 +175,11 @@ out.**
   by someone who understood the hazard and mitigated it in the only place
   they controlled; the default it warns about is still in `environment.dart`.
   Cross-referenced to `e2echat1` as the second instance of the class.
+- 2026-09-27T18:20 — corrected the blast radius. The original claim of
+  "authentication bypassed" against production was **wrong**: the server-side
+  guard requires `environment in ("development","test")`, verified at
+  `dependencies.py:108` and `:327` on origin/main, and prod sets
+  `ENVIRONMENT=prod` without `E2E_TEST_MODE`. Found by palateful-4f while
+  reviewing whether hand-rolled dart-defines were safe. The spec's fix still
+  stands; only the threat model changed, from "bypass reaches prod" to "wrong
+  target, real credentials, sandbox assumption".
