@@ -141,8 +141,9 @@ jobs:
     # Ceiling, not a target. Before 2026-11-24 the observed max was 22s
     # across 5 successful runs (7s, 10s, 12s, 13s, 22s) — two AWS reads and a
     # git log. The overdue predicate adds a yarn install and a handful of nx
-    # queries (one when the backend is quiet; ~1s each locally — see the
-    # measure step), so re-measure the max once a few runs exist.
+    # queries (one when the backend is quiet). First run with it, dispatch
+    # 45564742624 against real prod: 30s job — yarn install 9s (warm cache),
+    # measure 7s. One sample; re-measure the max once a few runs exist.
     #
     # This one matters more than its runtime suggests. A detector that can
     # hang for six hours while nothing says so is not a detector: this job
