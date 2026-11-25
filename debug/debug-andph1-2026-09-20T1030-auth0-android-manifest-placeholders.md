@@ -84,3 +84,9 @@ about whether Android can receive the redirect at all.
 ## Status log
 - 2026-09-20T10:30 — filed from lgort1 Phase 8 gap-filing; placeholder absence
   verified by grep, build impact NOT verified
+- 2026-11-25T11:15 — `flutter build apk --debug` run on `b677da27` (Android/iOS/
+  pubspec files identical to `origin/main` `588445f5`) by shk103: it fails
+  **before** the manifest merger, on a build-script error and then AGP 8.7.3
+  being too old for the resolved AndroidX — filed as `andbld1`. This item's
+  placeholder question is still unanswered; it is next in line once andbld1
+  lands.
