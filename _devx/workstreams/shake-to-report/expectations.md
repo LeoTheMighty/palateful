@@ -27,7 +27,7 @@
   feedback, that screen's route and the trigger `shake`.
 - **Threshold:** exactly 1 prompt with action `Report` within 1 s of the
   trace's last peak; after the tap exactly 1 feedback sheet and an
-  unchanged router location beneath it; exactly 1 `POST /v1/user/feedback`
+  unchanged router location beneath it; exactly 1 `POST /v1/users/me/feedback`
   whose `context.route` equals the start route and `context.trigger`
   equals `shake`. Ignored, the prompt is gone after 4 s with 0 sheets and
   the location unchanged. Controls: the fake channel delivers the trace to
@@ -121,7 +121,7 @@
 - **Priority:** P1
 - **Covers:** `UC-7, CAP-7, FR-10, FR-13`
 - **Trigger:** `GET /v1/flags/perf` with `SHAKE_REPORT_RING` unset, set to
-  each value, and set to an invalid value; `POST /v1/user/feedback` with
+  each value, and set to an invalid value; `POST /v1/users/me/feedback` with
   `context.trigger` of `shake`, `profile`, absent, and `wiggle`.
 - **Expectation (EARS):** When a client asks for its flags or submits
   feedback with a trigger, the system SHALL return the configured ring
@@ -161,7 +161,7 @@
   Separately, Profile's Send Feedback tile is tapped.
 - **Expectation (EARS):** When the app starts or resumes online with
   feedback queued, the system SHALL send it, whichever screen is mounted.
-- **Threshold:** 1 queued item sent in 1 `POST /v1/user/feedback`, queue
+- **Threshold:** 1 queued item sent in 1 `POST /v1/users/me/feedback`, queue
   length 0 afterwards, and 0 builds of Profile; Profile's tile opens 1
   sheet whose context carries `trigger` `profile` and route `/profile`.
 - **Verified by:** `app/test/features/profile/feedback_launcher_test.dart`

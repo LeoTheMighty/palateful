@@ -17,6 +17,9 @@ outcome:
 workstream: _devx/workstreams/shake-to-report
 gate_verdicts:
   prd: PASS
+  design: null
+  plan: null
+  evals: null
 ---
 
 ## Goal
@@ -27,3 +30,4 @@ Shake-to-report for Palateful's iOS and Android app: a deliberate shake shows a 
 
 - 2026-11-25T09:02 — workstream scaffolded by `devx workstream new shake-to-report`.
 - 2026-11-25T09:35 — prd stage: `devx gate prd f89791` → PASS (1 FAIL round: E-8 threshold had no numerals). Artifacts: `prd/agent.md`, `prd/human.md` (render lint 0 HARD), `expectations.md` (E-1…E-10; P0: E-1…E-4), `decisions/2026-11-25-separate-workstream.md`. Templates came from cherry-picking 87c0663e (admin-request-intake's template commit) so both branches add identical files; the first `devx workstream new` at c80d253 refused on the flat templates and still wrote a plan spec and three empty dirs, removed by hand. Critique skipped (thoroughness send-it). Outline not bootstrapped (dispatched run). Profile preflight: non-interactive, registry defaults, nothing recorded. Feasibility probe before pinning Verified-by: the real `PalatefulApp` boots signed-in in a widget test run from outside the `app/` package, and the sensors_plus channel can be faked.
+- 2026-11-25T09:36 — revise: E-1, E-6, E-8 named the feedback endpoint as `POST /v1/user/feedback`, written from memory; the route is `POST /v1/users/me/feedback` (`services/api/src/routers/v1/user_router.py:214`, `app/lib/core/services/api_client.dart:877`). `devx revise f89791 --touched expectations.md` (4 flags reset), `devx gate prd f89791` → PASS.
