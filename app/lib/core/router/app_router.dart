@@ -87,11 +87,35 @@ GoRouter? _router;
 void resetRouter() {
   _router?.dispose();
   _router = null;
+  // Static, so it survives between tests and between hot restarts: a
+  // leftover pending link would redirect the next boot somewhere nobody
+  // asked for.
+  _pendingDeepLink = null;
 }
 
-/// cla-4: single observer instance reused across the root Navigator and
-/// every branch Navigator. Declared lazily so tests / hot-restart paths
-/// don't pin a stale GoRouter reference.
+/// The observer used for `reportTabSwap` only — **never attached to a
+/// Navigator.**
+///
+/// A Flutter `NavigatorObserver` may attach to exactly one Navigator;
+/// `HeroControllerScope` asserts `observer.navigator == null` when it
+/// installs one. cla-4 shared a single instance across the root Navigator
+/// and every shell branch, which `StatefulShellRoute.indexedStack` gives
+/// its own Navigator each — so the second attach threw
+/// `observer.navigator == null is not true` and the content pane rendered
+/// the red error screen.
+///
+/// **In release that assertion is stripped**, so production did not throw:
+/// the `navigator` field was silently overwritten by the last attach, and
+/// route/paint events were attributed to one Navigator instead of six.
+/// Debug failed loudly; release failed wrongly and silently, which is why
+/// nothing in production QA ever surfaced it.
+///
+/// Sharing was never needed: the observer holds no cross-Navigator state.
+/// Its only mutable field is a debug log latch (now static, so "warn
+/// once" still holds across instances), and the state that genuinely is
+/// shared — `ClientLatencyIngest` — is resolved per event through a
+/// closure. So each Navigator gets its own instance via
+/// [_newPerfObserver], and they all write to the same ingest.
 PerfNavigatorObserver? _perfObserver;
 
 /// Drop the cached observer. Companion to [resetRouter] for hot-restart
@@ -100,8 +124,10 @@ void resetPerfNavigatorObserver() {
   _perfObserver = null;
 }
 
-PerfNavigatorObserver _resolvePerfObserver() {
-  return _perfObserver ??= PerfNavigatorObserver(
+/// A fresh observer for one Navigator. One per attach site — see
+/// [_perfObserver] for why they must not be shared.
+PerfNavigatorObserver _newPerfObserver() {
+  return PerfNavigatorObserver(
     // e2egetit: resolve through the registration guard, not straight out
     // of GetIt. `main()` skips `_bootstrapClientLatencyIngest()` under
     // `E2E_MODE=true` and runs it `unawaited` otherwise, so the observer
@@ -115,6 +141,10 @@ PerfNavigatorObserver _resolvePerfObserver() {
   );
 }
 
+/// The unattached instance backing [perfNavigatorObserver].
+PerfNavigatorObserver _resolvePerfObserver() =>
+    _perfObserver ??= _newPerfObserver();
+
 /// Exposed for `ScaffoldWithBottomNav` (cla-4): bottom-tab swaps don't
 /// fire `didPush` on any Navigator, so the shell calls this when the
 /// branch index changes.
@@ -125,61 +155,112 @@ PerfNavigatorObserver _resolvePerfObserver() {
 /// resolved, because the shell caches nothing and simply saw null.
 PerfNavigatorObserver? get perfNavigatorObserver => _resolvePerfObserver();
 
+/// Where an unauthenticated deep link wanted to go, held across the login
+/// round trip.
+///
+/// Without this, sending someone to `/login` **loses** the route they
+/// asked for: the "already onboarded" rule below then forwards them to
+/// `/`. Deep-linking while signed out would take you to Home, which is
+/// the same user-visible failure as the one this file's `initialLocation`
+/// used to cause, just on a different path.
+String? _pendingDeepLink;
+
+@visibleForTesting
+String? get pendingDeepLink => _pendingDeepLink;
+
+/// Decide the redirect, if any, for one navigation.
+///
+/// Pulled out of the `GoRouter` closure deliberately: as a closure, none
+/// of these branches could be unit-tested without building a router and a
+/// widget tree, and the deep-link case below shipped broken precisely
+/// because nothing could assert on it cheaply.
+@visibleForTesting
+String? resolveAuthRedirect({
+  required String location,
+  required String fullUri,
+  required bool isAuthenticated,
+  required bool hasCompletedOnboarding,
+  required bool isAdmin,
+}) {
+  final isOnLoginPage = location == '/login';
+  final isOnOnboardingPage = location.startsWith('/onboarding');
+  // Public share landing pages (recipe + meal) are reachable without
+  // auth. A stranger tapping a `https://palateful.app/meal-public/…`
+  // link must hit the screen directly, not bounce to /login.
+  //
+  // NOTE: this is an allowlist of routes permitted to keep their own URL,
+  // and it is the *auth* half of that. The other half — routes keeping
+  // their URL at all — used to be decided by `initialLocation: '/login'`
+  // discarding every URL on a cold load, so only these two ever worked.
+  // Which routes are public is a product/security decision and is
+  // deliberately not changed here.
+  final isOnPublicSharePage = location.startsWith('/recipe-public/') ||
+      location.startsWith('/meal-public/');
+
+  if (!isAuthenticated && !isOnLoginPage && !isOnPublicSharePage) {
+    // Remember where they were going, so login returns them there.
+    _pendingDeepLink = fullUri;
+    return '/login';
+  }
+
+  if (isAuthenticated && !hasCompletedOnboarding && !isOnOnboardingPage &&
+      !isOnPublicSharePage) {
+    return '/onboarding/welcome';
+  }
+
+  if (isAuthenticated && hasCompletedOnboarding &&
+      (isOnLoginPage || isOnOnboardingPage)) {
+    final pending = _pendingDeepLink;
+    _pendingDeepLink = null;
+    // Only honour a pending link that isn't itself the login/onboarding
+    // page, or this returns to where it started and loops.
+    if (pending != null &&
+        pending != '/login' &&
+        !pending.startsWith('/onboarding')) {
+      return pending;
+    }
+    return '/';
+  }
+
+  if (location.startsWith('/admin') && !isAdmin) {
+    return '/';
+  }
+
+  return null;
+}
+
 GoRouter get appRouter {
-  final perfObserver = _resolvePerfObserver();
   _router ??= GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: '/login',
-    observers: [CrashlyticsNavObserver(), perfObserver],
+    // NO `initialLocation`. Setting it to '/login' meant the router
+    // started there rather than adopting the URL the app was opened with,
+    // so on web **every deep link and every refresh was discarded** and
+    // the "already onboarded" rule forwarded the user to `/`. `/` was not
+    // a fallback, it was the only reachable entry point on a cold load:
+    // refresh anywhere but Home returned you Home, bookmarks did not
+    // work, and shared in-app links did not work.
+    //
+    // Omitting it makes go_router use the platform's initial route —
+    // the browser URL on web, the launching deep link (or `/`) on
+    // mobile — which is the correct behaviour on both. Nothing else here
+    // depended on starting at '/login': the `redirect` below sends an
+    // unauthenticated user there from wherever they land.
+    observers: [CrashlyticsNavObserver(), _newPerfObserver()],
     refreshListenable: getIt<AuthService>(),
     redirect: (context, state) {
       final authService = getIt<AuthService>();
-      final isAuthenticated = authService.isAuthenticated;
-      final hasCompletedOnboarding = authService.hasCompletedOnboarding;
-      final currentLocation = state.matchedLocation;
-      final isOnLoginPage = currentLocation == '/login';
-      final isOnOnboardingPage = currentLocation.startsWith('/onboarding');
-      // Public share landing pages (recipe + meal) are reachable without
-      // auth. A stranger tapping a `https://palateful.app/meal-public/…`
-      // link must hit the screen directly, not bounce to /login.
-      final isOnPublicSharePage =
-          currentLocation.startsWith('/recipe-public/') ||
-              currentLocation.startsWith('/meal-public/');
-
-      debugPrint('Router redirect: location=$currentLocation, isAuthenticated=$isAuthenticated, hasCompletedOnboarding=$hasCompletedOnboarding');
-
-      // Not authenticated - go to login (unless already there, or on a
-      // public share page).
-      if (!isAuthenticated && !isOnLoginPage && !isOnPublicSharePage) {
-        debugPrint('Redirecting to /login (not authenticated)');
-        return '/login';
-      }
-
-      // Authenticated but not onboarded - go to onboarding (unless
-      // already there, or on a public share page).
-      if (isAuthenticated &&
-          !hasCompletedOnboarding &&
-          !isOnOnboardingPage &&
-          !isOnPublicSharePage) {
-        debugPrint('Redirecting to /onboarding/welcome (not onboarded)');
-        return '/onboarding/welcome';
-      }
-
-      // Authenticated and onboarded, but on login or onboarding page - go home
-      if (isAuthenticated && hasCompletedOnboarding && (isOnLoginPage || isOnOnboardingPage)) {
-        debugPrint('Redirecting to / (already onboarded)');
-        return '/';
-      }
-
-      // Admin routes - require admin role
-      final isAdminRoute = currentLocation.startsWith('/admin');
-      if (isAdminRoute && !authService.isAdmin) {
-        debugPrint('Redirecting to / (not admin)');
-        return '/';
-      }
-
-      debugPrint('No redirect needed');
-      return null;
+      final target = resolveAuthRedirect(
+        location: state.matchedLocation,
+        fullUri: state.uri.toString(),
+        isAuthenticated: authService.isAuthenticated,
+        hasCompletedOnboarding: authService.hasCompletedOnboarding,
+        isAdmin: authService.isAdmin,
+      );
+      debugPrint('Router redirect: location=${state.matchedLocation}, '
+          'isAuthenticated=${authService.isAuthenticated}, '
+          'hasCompletedOnboarding=${authService.hasCompletedOnboarding} '
+          '→ ${target ?? "no redirect"}');
+      return target;
     },
     routes: [
       // Non-shell routes (outside bottom nav)
@@ -647,7 +728,7 @@ GoRouter get appRouter {
           // Home tab (index 0)
           StatefulShellBranch(
             navigatorKey: _homeNavigatorKey,
-            observers: [perfObserver],
+            observers: [_newPerfObserver()],
             routes: [
               GoRoute(
                 path: '/',
@@ -681,7 +762,7 @@ GoRouter get appRouter {
           // Cart tab (index 1)
           StatefulShellBranch(
             navigatorKey: _cartNavigatorKey,
-            observers: [perfObserver],
+            observers: [_newPerfObserver()],
             routes: [
               GoRoute(
                 path: '/cart',
@@ -699,7 +780,7 @@ GoRouter get appRouter {
           // Activity tab (index 2)
           StatefulShellBranch(
             navigatorKey: _activityNavigatorKey,
-            observers: [perfObserver],
+            observers: [_newPerfObserver()],
             routes: [
               GoRoute(
                 path: '/activity',
@@ -736,7 +817,7 @@ GoRouter get appRouter {
           // Calendar tab (index 3)
           StatefulShellBranch(
             navigatorKey: _calendarNavigatorKey,
-            observers: [perfObserver],
+            observers: [_newPerfObserver()],
             routes: [
               GoRoute(
                 path: '/calendar',
@@ -758,7 +839,7 @@ GoRouter get appRouter {
           // Profile tab (index 4)
           StatefulShellBranch(
             navigatorKey: _profileNavigatorKey,
-            observers: [perfObserver],
+            observers: [_newPerfObserver()],
             routes: [
               GoRoute(
                 path: '/profile',
