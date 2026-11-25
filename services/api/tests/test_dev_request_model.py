@@ -19,6 +19,8 @@ import importlib.util
 import json
 import logging
 import re
+import sys
+import types
 import uuid
 from pathlib import Path
 
@@ -166,7 +168,19 @@ def _squash(sql) -> str:
 def migration_ops():
     spec = importlib.util.spec_from_file_location("devrequests01_migration", MIGRATION)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # The migration does `from alembic import op`. alembic is the migrator's
+    # dependency, not the api's, so a fresh api venv (CI's `api:install`) has
+    # none and every test here would ERROR at setup. Stand a module in for
+    # the import only; upgrade() runs against the recorder below either way.
+    saved = sys.modules.get("alembic")
+    sys.modules["alembic"] = types.SimpleNamespace(op=None)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if saved is None:
+            del sys.modules["alembic"]
+        else:
+            sys.modules["alembic"] = saved
     recorder = _RecordingOp()
     module.op = recorder
     module.upgrade()
