@@ -4,13 +4,30 @@ type: plan
 created: 2026-11-25T09:02:07-07:00
 title: Shake To Report
 status: in-progress
-stage: red
+stage: executing
 entered_at: prd
 gate_status:
   prd_validated: true
   design_verified: true
   plan_verified: true
-  evals_red: false
+  evals_red: true
+  evals_locked: true
+  red_eval_ids:
+    E-5: null
+    E-6: null
+    E-7: null
+    E-8: null
+    E-9: null
+    E-10: null
+    E-1: _devx/workstreams/shake-to-report/evals/E-1_user_path.sh
+    E-2: _devx/workstreams/shake-to-report/evals/E-2_everyday_motion.sh
+    E-3: _devx/workstreams/shake-to-report/evals/E-3_no_interruption.sh
+    E-4: _devx/workstreams/shake-to-report/evals/E-4_role_and_ring.sh
+  red_eval_shas:
+    _devx/workstreams/shake-to-report/evals/E-1_user_path.sh: ba3d4345e19302eb99d3b63de45189d49c27d8828dc1eeb0d41168db09975b1d
+    _devx/workstreams/shake-to-report/evals/E-2_everyday_motion.sh: 2701a3f5c7d641e0594fcbd763751ef2813c43f619af9d619b22fc303a2a68f5
+    _devx/workstreams/shake-to-report/evals/E-3_no_interruption.sh: 83ebab7f32644c652932c5fff9802d6bb77f0409f66ae52710faf86a19af2855
+    _devx/workstreams/shake-to-report/evals/E-4_role_and_ring.sh: b1a1af9f0f7dad8809712f53a39f5e2cbd13f652d507b8b4befb629ac4ca42b6
 outcome:
   status: null
   measure_by: null
@@ -19,7 +36,7 @@ gate_verdicts:
   prd: PASS
   design: CONCERNS
   plan: PASS
-  evals: null
+  evals: PASS
 ---
 
 ## Goal
@@ -33,3 +50,4 @@ Shake-to-report for Palateful's iOS and Android app: a deliberate shake shows a 
 - 2026-11-25T09:36 — revise: E-1, E-6, E-8 named the feedback endpoint as `POST /v1/user/feedback`, written from memory; the route is `POST /v1/users/me/feedback` (`services/api/src/routers/v1/user_router.py:214`, `app/lib/core/services/api_client.dart:877`). `devx revise f89791 --touched expectations.md` (4 flags reset), `devx gate prd f89791` → PASS.
 - 2026-11-25T09:41 — design stage: `devx gate coverage f89791` (design) → CONCERNS, advanced: G-2 partial (FR-3's thresholds unproven until E-7 on hardware), G-4 partial (needs arq103's route on main). research.md answered by the authoring session, NOT blind (no subagent tool); every citation re-read at its line, 6 drifted line numbers corrected. Coverage table self-judged (`decisions/2026-11-25-design-coverage-table.json`); 2 extras flagged (web feedback gains platform `web`; route-exists check before the admin push). Own design bug caught before the gate: `defaultTargetPlatform` on web reports the browser's OS. Artifacts: `design/agent.md`, `design/human.md` (render lint 0 HARD), `design/research-questions.md`, `design/research.md`.
 - 2026-11-25T09:45 — plan stage: 6 phases (shk101…shk106) and 2 external gates (X-1 arq103's route on main; X-2 a version-bumped release). Riskiest phase named: 3 (native dependency; no PR-time CI builds iOS or Android, and its pubspec edit fires Xcode Cloud). The P0 evals join CI's Flutter job in the phase that turns each green. Critique skipped (send-it; no subagent tool for lenses). `devx gate coverage f89791` (plan) → FAIL once (rows lacked the `artifact` field the P0 floor reads), then PASS; execution graph clean. Coverage table self-judged (`decisions/2026-11-25-plan-coverage-table.json`). Artifacts: `plan/agent.md`, `plan/human.md` (render lint 0 HARD).
+- 2026-11-25T10:04 — revise: a throwaway spike (never committed) showed the prompt never faded: in Flutter 3.41 a SnackBar with an action persists by default and only `persist` gates its timeout (`material/snack_bar.dart:303`, `material/scaffold.dart:615-628`), so design § Host now passes `persist: MediaQuery.accessibleNavigationOf(context)` and RQ10 is corrected (its doc-comment quote is stale). `devx revise f89791 --touched design` (3 flags reset); Gate 2 → CONCERNS (same two partials), Gate 3 → PASS.

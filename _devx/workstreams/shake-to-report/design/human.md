@@ -60,8 +60,8 @@ Wraps the router inside `MaterialApp.router`'s builder.
   allowing, app in foreground.
 - **Refuses** while a text field has focus, a dialog or sheet is open on
   any navigator, or its own prompt, sheet or the dev-request form is up.
-- **Prompts** with a 4-second floating snackbar; two ignored in a row mute
-  it until next launch.
+- **Prompts** with a 4-second floating snackbar (kept up for screen-reader
+  users); two ignored in a row mute it until next launch.
 - **On a tap** it pushes, never replaces, so the screen underneath keeps
   its timers and typed text. Admin only if admin at prompt and tap, and
   only if the route exists; otherwise feedback.

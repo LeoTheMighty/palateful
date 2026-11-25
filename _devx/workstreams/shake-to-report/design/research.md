@@ -122,9 +122,15 @@ on `main`, fetched 2026-11-25).
 
 ## Q10 — Snackbars under screen readers
 
-"A SnackBar with an action will not time out when TalkBack or VoiceOver
-are enabled", controlled by `accessibleNavigation` (Flutter
-`material/snack_bar.dart:227-228`; `material/scaffold.dart:207`, `:446`).
+Corrected at RED (2026-11-25), after a throwaway spike showed a prompt that
+never faded. The class doc still says "A SnackBar with an action will not
+time out when TalkBack or VoiceOver are enabled"
+(Flutter `material/snack_bar.dart:227-228`), but in 3.41 the timeout is
+gated by `persist` alone: `persist = persist ?? action != null`
+(`material/snack_bar.dart:303`), and the timer callback returns early when
+`snackBar.persist` (`material/scaffold.dart:615-628`). So a snackbar with an
+action persists for everyone unless `persist: false` is passed, and
+`accessibleNavigation` no longer decides it.
 
 ## Q11 — Does iOS's Shake to Undo reach Flutter text fields?
 

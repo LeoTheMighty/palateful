@@ -233,9 +233,13 @@ shows the prompt:
 - *Not resumed*, *signed out*: already excluded by eligibility; checked
   again because a recognition can be in flight across a change.
 
-**The prompt (FR-5)** is a `SnackBar(behavior: floating, duration: 4 s)`
-shown through the messenger key, so it appears on whatever `Scaffold` is
-current. Copy is fixed: `Send feedback?` / `Report` for a user,
+**The prompt (FR-5)** is a `SnackBar(behavior: floating, duration: 4 s,
+persist: MediaQuery.accessibleNavigationOf(context))` shown through the
+messenger key, so it appears on whatever `Scaffold` is current. `persist`
+must be explicit: in Flutter 3.41 a snackbar with an action persists by
+default and only `persist` gates its timeout (RQ10), so without it the
+prompt never fades. Passing accessible navigation keeps it up for screen
+reader users, as FR-5 requires, and lets it fade for everyone else. Copy is fixed: `Send feedback?` / `Report` for a user,
 `File a dev request?` / `Request` for an admin, chosen by `isAdmin` at
 recognition. The host awaits the snackbar's `closed` reason: `action` →
 route; `timeout` or `swipe` → count an ignored prompt (two in a row set the
