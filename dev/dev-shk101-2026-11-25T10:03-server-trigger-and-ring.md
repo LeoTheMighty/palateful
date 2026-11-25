@@ -7,7 +7,7 @@ from: plan/plan-f89791-2026-11-25T09:02-shake-to-report.md
 workstream: _devx/workstreams/shake-to-report
 phase: 1
 status: in-review
-owner: claude-session-01Dd56uByrknr4rjyd7vPkxZ
+owner: palateful-21
 branch: feat/dev-shk101
 blocked_by: []
 ---
