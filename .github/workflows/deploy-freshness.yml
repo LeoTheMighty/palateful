@@ -1,5 +1,7 @@
-# Deploy-freshness check — fails when prod runs an image more than 7 days
-# behind main, so a silent deploy freeze (92 days, once) cannot recur.
+# Deploy-freshness check — fails when prod is OVERDUE a deploy: when main has
+# carried a change that deploys a new image for longer than MAX_OVERDUE_HOURS
+# and prod still does not run it. So a silent deploy freeze (92 days, once)
+# cannot recur — and a quiet backend is not mistaken for one.
 #
 # This lives in its OWN workflow file on purpose. The check shares its fate
 # with the CI system whose silent breakage it exists to catch; the only
@@ -8,23 +10,38 @@
 # skipped throughout the very incident that motivated this check.
 #
 # ─────────────────────────────────────────────────────────────────────────
+# WHAT IT MEASURES, AND WHY NOT IMAGE AGE
+#
+# Until 2026-11-24 this compared the running image's commit date to `now`
+# (red past 7 days). That cannot tell "the deploy pipeline is stuck" from
+# "nothing needed deploying", and this project is worked in bursts: the last
+# backend burst deployed cd6a3c3e on 2026-09-24, and from 2026-10-03 — seven
+# days later — the check failed all 106 of its scheduled firings through
+# 2026-11-25, while all 24 commits on main since cd6a3c3e touched nothing
+# that deploys. Correct image, permanent alarm: the state in which a monitor
+# stops being read.
+#
+# Now: take D = the commit prod's image was built from, and B = main as it
+# stood MAX_OVERDUE_HOURS ago. RED iff tools/deploy-affected.sh says D..B
+# deploys a new image — i.e. a change that should have produced a new image
+# landed more than the grace window ago, and prod does not have it. That
+# script is the same one ci.yml's detect-changes runs to decide what deploys,
+# so "should have deployed" here and "deploys" there cannot drift apart.
+#
+#   quiet backend, any image age   -> D..main deploys nothing     -> green
+#   deploy-triggering merge, < grace -> D..B deploys nothing yet   -> green (in flight)
+#   deploy-triggering merge, > grace -> D..B deploys something      -> RED
+#
 # IF THIS CHECK IS RED AND YOU ARE HERE TO FIX IT: it is probably working.
-#
-# A red run means prod really is more than 7 days behind main. As of
-# 2026-09-20 that is the expected result on EVERY firing: the API has run
-# task-definition :63 (commit 848311af, 2026-07-31) continuously, and only
-# a change under services/ will move it — ci.yml computes services_to_build
-# from the diff, so PRs touching app/, tools/, .github/ or docs deploy
-# nothing. The check going red daily is the freeze being visible, which is
-# the entire point of the file.
-#
-# Fix the deploy, not the check. See MANUAL.md (E-7 step 6b) and rsh102 —
-# the credential-rotation fix must reach prod before 2026-10-29.
+# The alert names the oldest commit that should have deployed and did not.
+# Find ci.yml's run for that push (or the push after it) and read
+# detect-changes -> deploy-images -> terraform-prod -> deploy-services; then
+# the production environment's reviewer gate. Fix the deploy, not the check.
 #
 # Historical note: this check authenticated for the first time on
 # 2026-09-20 (run 35528125176). The 50 scheduled runs before it all died in
 # configure-aws-credentials for want of `environment: production`, so it
-# had never once measured prod. A GREEN run here is newer than any red one.
+# had never once measured prod.
 # ─────────────────────────────────────────────────────────────────────────
 name: deploy-freshness
 
@@ -58,11 +75,15 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
-      synthetic-gap-days:
+      # Renamed from synthetic-gap-days (2026-11-24): the measured quantity
+      # changed from image age in days to overdue time in hours, and a
+      # dispatch still passing the old name fails at `gh workflow run`
+      # ("unexpected inputs") instead of silently measuring something else.
+      synthetic-overdue-hours:
         description: >-
-          TEST ONLY: substitute this gap (in days) for the real measurement.
-          Used by E-7 observation steps 3-4 to prove both the fail and pass
-          paths without touching prod.
+          TEST ONLY: substitute this many hours of "deploy overdue" for the
+          real measurement. Used by E-7 observation steps 3-4 to prove both
+          the fail and pass paths without touching prod.
         required: false
         default: ''
 
@@ -73,7 +94,32 @@ env:
   AWS_REGION: us-east-1
   CLUSTER: palateful-prod
   SERVICE: palateful-api-prod
-  MAX_GAP_DAYS: 7
+  # The grace window: how long a change that deploys a new image may sit on
+  # main without reaching prod before this goes red. MEASURED, not round:
+  #
+  #   - The 11 deploy-triggering commits of the 2026-09-22..24 burst (the
+  #     last burst before this was written) reached prod 22.8-48.1 min after
+  #     landing on main, median 38.2 min — "reached" meaning terraform-prod
+  #     finished, which is when services[0].taskDefinition moves. The slowest
+  #     whole run, push to deploy-services done, was 55 min (35913849835).
+  #   - ci.yml cancels in-progress runs on main, so deploy-triggering merges
+  #     closer together than one pipeline (~45 min) defer every deploy to the
+  #     burst's last push: the oldest commit then waits burst length + ~50 min.
+  #
+  # 3h is ~3.7x the slowest measured deploy: it absorbs a ~2h burst of
+  # back-to-back merges, or one flaked job re-run by hand, without flapping.
+  # A longer burst DOES go red, deliberately — prod really is that far behind
+  # main, because the cancellations starved the deploy lane (cicancel1).
+  #
+  # Cost against the schedule: slots are 12h apart, so a merge is caught by
+  # the first scheduled run that fires >3h after it — the very next run for
+  # ~3/4 of merges, the one after for the rest. Raising this past ~6h starts
+  # pushing detection to the second run for most merges; lowering it below
+  # ~1h starts alerting on healthy in-flight deploys.
+  MAX_OVERDUE_HOURS: 3
+  # Must match ci.yml's NODE_VERSION: the measure step runs nx through the
+  # same tools/deploy-affected.sh that detect-changes runs.
+  NODE_VERSION: '22'
   # The alert topic from alrt1 (terraform/modules/alerts). Subscriptions are
   # created by hand, outside Terraform, so no address appears in this repo,
   # in plan output, or in state — CI logs here are public.
@@ -92,32 +138,60 @@ jobs:
     # exempt this job or move the AWS secrets to repo scope.
     environment: production
     runs-on: ubuntu-latest
-    # Ceiling, not a target: observed max 22s across the last 5 successful
-    # runs (7s, 10s, 12s, 13s, 22s) — two AWS reads and a git log.
-    # 
+    # Ceiling, not a target. Before 2026-11-24 the observed max was 22s
+    # across 5 successful runs (7s, 10s, 12s, 13s, 22s) — two AWS reads and a
+    # git log. The overdue predicate adds a yarn install and a handful of nx
+    # queries (one when the backend is quiet). First run with it, dispatch
+    # 45564742624 against real prod: 30s job — yarn install 9s (warm cache),
+    # measure 7s. One sample; re-measure the max once a few runs exist.
+    #
     # This one matters more than its runtime suggests. A detector that can
     # hang for six hours while nothing says so is not a detector: this job
     # exists to notice silence, and without a ceiling it can itself go
-    # silent in exactly the way it was built to catch. 10m is ~27x the
-    # observed max, so a slow AWS API cannot trip it.
+    # silent in exactly the way it was built to catch. 10m leaves several
+    # minutes of headroom over a cold yarn install, so a slow AWS API or
+    # registry cannot trip it.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           # Full history: the deployed SHA may be months old (92 days when
-          # this workstream opened) — a shallow clone cannot date it.
+          # this workstream opened), and the measure step walks main's
+          # first-parent history from it to origin/main — a shallow clone
+          # has neither.
           fetch-depth: 0
 
+      # nx is how tools/deploy-affected.sh — shared with ci.yml's
+      # detect-changes — decides what deploys. Same lockfile, same nx.
+      #
+      # Installed BEFORE the AWS credentials exist, as ci.yml's deploy-images
+      # does: configure-aws-credentials exports the keys to every later step,
+      # and a yarn install runs every dependency's install scripts. Prod keys
+      # have no business in that environment. (nx itself still runs with
+      # them in the measure step, as it already does in deploy-images.)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+
+      - name: Install Node dependencies
+        run: yarn install --frozen-lockfile
+
+      # `!cancelled()`, not the default success(): if the install above
+      # fails, the measure step is skipped and the no-verdict notifier at the
+      # bottom must still be able to reach SNS to say so. Without credentials
+      # a registry outage would be a silent failure — the 52-run shape again.
       - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ !cancelled() }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Measure gap between running image and its commit date
+      - name: Measure how long prod has been overdue a deploy
         id: measure
         env:
-          SYNTHETIC_GAP_DAYS: ${{ inputs.synthetic-gap-days }}
+          SYNTHETIC_OVERDUE_HOURS: ${{ inputs.synthetic-overdue-hours }}
         run: |
           set -euo pipefail
 
@@ -125,35 +199,38 @@ jobs:
           #
           # This step still exits non-zero on a red verdict — `tools/
           # deploy-freshness-self-test.sh` extracts this body and asserts
-          # exactly that, and the exit code IS the check. What's new is
-          # that it RECORDS the verdict first, so the notify step below
-          # (which runs on `always()`, because this step has failed by
-          # then) can tell the two failure shapes apart:
+          # exactly that, and the exit code IS the check. It RECORDS the
+          # verdict first, so the notify step below (which runs on
+          # `always()`, because this step has failed by then) can tell the
+          # failure shapes apart:
           #
-          #   verdict=stale   — measured prod, it is too old. Notify.
+          #   verdict=stale   — measured prod, it is overdue a deploy. Notify.
           #   verdict=unknown — measured prod, the tag isn't a commit here.
           #                     Notify; unknown provenance is alarming.
-          #   verdict=fresh   — measured prod, it is current. Silence.
+          #   verdict=fresh   — measured prod, nothing is overdue (quiet, or
+          #                     a deploy within its grace window). Silence.
           #   (no verdict)    — this step never got to a measurement. The
           #                     49 runs before 2026-09-20 all died in
           #                     configure-aws-credentials and measured
           #                     NOTHING, while looking exactly as red as a
-          #                     real freeze. See the header note.
+          #                     real freeze. See the header note. An nx or
+          #                     git failure below lands here too, never in
+          #                     `fresh`.
           #
-          # The no-verdict case cannot notify from here: it means AWS
-          # credentials failed, and publishing to SNS needs those same
-          # credentials. Nothing this workflow can do reaches a human in
-          # that state — that gap is absal1's job (alert on the ABSENCE of
-          # an expected heartbeat), and it is the reason absal1 must land.
-          # Do not "fix" this by making the notify step run without a
-          # verdict; it would publish nothing and hide the gap.
+          # The credential-failure case cannot notify from here: publishing
+          # to SNS needs those same credentials. That gap is absal1's job
+          # (alert on the ABSENCE of an expected heartbeat). Do not "fix" this
+          # by making the notify step run without a verdict; it would publish
+          # nothing and hide the gap.
 
           # `tools/deploy-freshness-self-test.sh` extracts this step's body
           # and runs it OUTSIDE Actions, where $GITHUB_OUTPUT does not exist
           # and `set -u` turns a bare reference into a fatal error. Writing
           # through this helper keeps the step runnable in both places — and
           # keeps the self-test able to check the logic, which is the whole
-          # reason that harness exists.
+          # reason that harness exists. (It also runs under macOS's bash 3.2
+          # via the live check, hence no mapfile and no empty-array
+          # expansions below.)
           emit() { printf '%s\n' "$@" >> "${GITHUB_OUTPUT:-/dev/null}"; }
 
           # THE FAMILY-SHORTCUT TRAP — do not "simplify" this to
@@ -178,33 +255,130 @@ jobs:
           tag="${image##*:}"
           echo "Deployed image: $image"
 
-          if [ -n "${SYNTHETIC_GAP_DAYS:-}" ]; then
-            gap_days="$SYNTHETIC_GAP_DAYS"
-            echo "::warning::SYNTHETIC gap of ${gap_days}d substituted for the real measurement (test run)."
+          now=$(date +%s)
+          grace_s=$(( MAX_OVERDUE_HOURS * 3600 ))
+          # 5h 12m / 61d 3h — hours for anything inside two days.
+          dur() { local h=$(( $1 / 3600 )); if [ "$h" -ge 48 ]; then echo "$(( h / 24 ))d $(( h % 24 ))h"; else echo "${h}h $(( ($1 % 3600) / 60 ))m"; fi; }
+
+          if [ -n "${SYNTHETIC_OVERDUE_HOURS:-}" ]; then
+            case "$SYNTHETIC_OVERDUE_HOURS" in
+              *[!0-9]*) echo "::error::synthetic-overdue-hours must be a whole number of hours, got '$SYNTHETIC_OVERDUE_HOURS'."; exit 1 ;;
+            esac
+            echo "::warning::SYNTHETIC overdue of ${SYNTHETIC_OVERDUE_HOURS}h substituted for the real measurement (test run)."
+            overdue_s=$(( SYNTHETIC_OVERDUE_HOURS * 3600 ))
+            if [ "$overdue_s" -gt "$grace_s" ]; then overdue=true; else overdue=false; fi
+            why="SYNTHETIC test value of ${SYNTHETIC_OVERDUE_HOURS}h, substituted for the measurement — this says nothing about prod."
           else
             # Image tags are pinned to the git SHA by resolve-tags (ci.yml),
-            # so the tag dates the deployment directly. A tag that is not a
-            # commit here means unknown provenance — itself alarming, so fail.
+            # so the tag IS the commit prod was built from. A tag that is not
+            # a commit here means unknown provenance — itself alarming, so fail.
             if ! git cat-file -e "${tag}^{commit}" 2>/dev/null; then
-              echo "::error::Deployed tag '$tag' is not a commit in this repository — cannot date the deployment."
+              echo "::error::Deployed tag '$tag' is not a commit in this repository — cannot place the deployment on main."
               emit "verdict=unknown" \
-                   "detail=Deployed tag '${tag}' is not a commit in this repository — cannot date the deployment. Image: ${image}"
+                   "detail=Deployed tag '${tag}' is not a commit in this repository — cannot place the deployment on main. Image: ${image}"
               exit 1
             fi
-            deployed_ct=$(git log -1 --format=%ct "$tag")
-            gap_days=$(( ($(date +%s) - deployed_ct) / 86400 ))
             echo "Deployed commit: $(git log -1 --format='%h %ci %s' "$tag")"
+            # Informational only. Image age is NOT the verdict: a quiet
+            # backend runs an old image correctly.
+            echo "Image age: $(dur $(( now - $(git log -1 --format=%ct "$tag") ))) (not the verdict)"
+
+            # origin/main, never HEAD: a workflow_dispatch from a branch checks
+            # that branch out, and the branch is not what deploys.
+            main_sha=$(git rev-parse --verify 'origin/main^{commit}')
+            echo "main: $(git log -1 --format='%h %ci %s' "$main_sha")"
+            if ! git merge-base --is-ancestor "$tag" "$main_sha"; then
+              echo "::warning::Deployed commit ${tag} is not on main (a Force Deploy from a branch?). Measuring main's changes since their merge-base."
+            fi
+
+            # Main's first-parent history since the deployed commit, oldest
+            # first, one "<sha> <committer-epoch>" per line. Committer time
+            # of a GitHub merge is the merge time. For a pushed local commit
+            # it is EARLIER than the push, which can only make this go red
+            # sooner, never later — the safe direction for a freeze detector.
+            hist=$(mktemp)
+            git log --first-parent --reverse --format='%H %ct' "${tag}..${main_sha}" > "$hist"
+            n=$(grep -c . "$hist" || true)
+            nth() { sed -n "${1}p" "$hist" | cut -d' ' -f1; }
+            nth_ct() { sed -n "${1}p" "$hist" | cut -d' ' -f2; }
+
+            # Does (deployed commit .. $1) deploy a new image? Asked of the
+            # SAME script ci.yml's detect-changes runs, so this cannot
+            # disagree with what CI actually deploys. Prints yes|no.
+            #
+            # Fails rather than answering when nx cannot: an empty answer
+            # would mean "nothing to deploy", i.e. green. Every caller
+            # assigns the result on its own line so `set -e` (or the explicit
+            # `|| return 1` inside a function) stops the step there.
+            deploys() {
+              local out
+              out=$(bash tools/deploy-affected.sh "$tag" "$1") || return 1
+              case "$out" in
+                *'services_to_build=[]'*) echo no ;;
+                *'services_to_build=["'*) echo yes ;;
+                *) echo "::error::tools/deploy-affected.sh printed no services_to_build line" >&2; return 1 ;;
+              esac
+            }
+            # Oldest index in [lo, hi] whose prefix deploys, given hi does.
+            # Bisection assumes "deploys" only turns on as commits are added;
+            # a later revert can break that, which can mis-NAME the oldest
+            # commit in the message but cannot change the verdict — that is
+            # decided by `deploys` on B alone, below.
+            first_deploying() {
+              local lo="$1" hi="$2" mid r
+              while [ "$lo" -lt "$hi" ]; do
+                mid=$(( (lo + hi) / 2 ))
+                r=$(deploys "$(nth "$mid")") || return 1
+                if [ "$r" = yes ]; then hi="$mid"; else lo=$(( mid + 1 )); fi
+              done
+              echo "$lo"
+            }
+
+            overdue=false
+            overdue_s=0
+            if [ "$n" -eq 0 ]; then
+              why="prod runs main's tip — nothing to deploy."
+            else
+              tip=$(deploys "$main_sha")
+              if [ "$tip" = no ]; then
+                why="quiet: ${n} commit(s) on main since the deployed commit, and together they deploy no new image (tools/deploy-affected.sh). An old image is the correct image."
+              else
+                # B = main as it stood MAX_OVERDUE_HOURS ago: the newest
+                # first-parent commit that landed before the cutoff. 0 when
+                # every undeployed commit is younger than the grace window.
+                b=$(awk -v cut=$(( now - grace_s )) '$2 < cut { b = NR } END { print b + 0 }' "$hist")
+                at_b=no
+                if [ "$b" -eq "$n" ]; then at_b="$tip"
+                elif [ "$b" -gt 0 ]; then at_b=$(deploys "$(nth "$b")"); fi
+                if [ "$at_b" = yes ]; then
+                  overdue=true
+                  i=$(first_deploying 1 "$b")
+                else
+                  i=$(first_deploying $(( b + 1 )) "$n")
+                fi
+                s_sha=$(nth "$i")
+                s_ct=$(nth_ct "$i")
+                overdue_s=$(( now - s_ct ))
+                oldest="$(git log -1 --format='%h (%ci) "%s"' "$s_sha")"
+                if [ "$overdue" = true ]; then
+                  why="main has carried changes that deploy a new image for $(dur "$overdue_s") and prod still runs $(git log -1 --format='%h (%ci)' "$tag"). Oldest undeployed: ${oldest}. Find ci.yml's run for that push or the next one and read detect-changes -> deploy-images -> terraform-prod -> deploy-services, then the production environment's reviewer gate."
+                else
+                  why="a change that deploys a new image landed $(dur "$overdue_s") ago, inside the grace window — a deploy is presumably in flight. Goes red from $(date -u -d "@$(( s_ct + grace_s ))" '+%Y-%m-%dT%H:%MZ' 2>/dev/null || date -u -r "$(( s_ct + grace_s ))" '+%Y-%m-%dT%H:%MZ') if it still has not reached prod. Oldest undeployed: ${oldest}."
+                fi
+              fi
+            fi
+            rm -f "$hist"
           fi
 
-          echo "Gap: ${gap_days} day(s); threshold: ${MAX_GAP_DAYS} day(s)."
-          emit "gap_days=${gap_days}"
-          if [ "$gap_days" -gt "$MAX_GAP_DAYS" ]; then
-            echo "::error::Prod is running an image ${gap_days} days old (threshold ${MAX_GAP_DAYS}d) — a deploy freeze is in progress. Check ci.yml deploy jobs and the production environment reviewer gate."
+          echo "Overdue: $(dur "$overdue_s"); grace: ${MAX_OVERDUE_HOURS}h."
+          emit "overdue_hours=$(( overdue_s / 3600 ))"
+          if [ "$overdue" = true ]; then
+            echo "::error::Prod is overdue a deploy (grace ${MAX_OVERDUE_HOURS}h) — a deploy freeze is in progress: ${why}"
             emit "verdict=stale" \
-                 "detail=Prod is running an image ${gap_days} days old (threshold ${MAX_GAP_DAYS}d) — a deploy freeze is in progress. Check ci.yml deploy jobs and the production environment reviewer gate."
+                 "detail=Prod is overdue a deploy (grace ${MAX_OVERDUE_HOURS}h) — a deploy freeze is in progress: ${why}"
             exit 1
           fi
-          echo "Prod image is fresh (${gap_days}d <= ${MAX_GAP_DAYS}d)."
+          echo "Prod is not overdue a deploy: ${why}"
           emit "verdict=fresh"
 
       # Publish the verdict BEFORE failing the job, so a red verdict reaches
