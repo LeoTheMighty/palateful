@@ -306,3 +306,58 @@ async def test_the_probe_does_not_replace_a_task_whose_url_has_no_password(
     monkeypatch.setattr(db_probe, "_probe_url", lambda: passwordless)
 
     assert await db_probe.probe_async() is ProbeVerdict.UNREACHABLE
+
+
+# ---------------------------------------------------------------------------
+# syncprobe1 — the sync budget, against a real server
+# ---------------------------------------------------------------------------
+
+
+def test_statement_timeout_actually_bounds_a_slow_query():
+    """The unit tests pin the connect_args; only this pins the effect.
+
+    `statement_timeout` is enforced by the SERVER, so no fixture can show
+    that it fires — a fake engine honours nothing. Without this test the
+    suite would prove the setting is passed and prove nothing about the
+    hang it exists to stop.
+
+    [M] Measured here: a 5s query is cancelled at ~0.5s, surfaces as
+    psycopg2 `QueryCanceled` (`pgcode` 57014) wrapped by SQLAlchemy, and
+    classifies `UNREACHABLE` — fail open, never `AUTH_FAILED`.
+    """
+    import time
+
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import NullPool
+    from utils.services.db_probe import (
+        PROBE_SYNC_STATEMENT_TIMEOUT_MS,
+        ProbeVerdict,
+        _classify,
+        _sync_connect_args,
+    )
+
+    url = f"postgresql+psycopg2://{USER}:{GOOD_PASSWORD}@{HOST}:{PORT}/{DBNAME}"
+    engine = create_engine(
+        url, poolclass=NullPool, connect_args=_sync_connect_args(2)
+    )
+    budget_s = PROBE_SYNC_STATEMENT_TIMEOUT_MS / 1000
+
+    started = time.monotonic()
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT pg_sleep(5)"))
+        pytest.fail(
+            "the 5s query completed: statement_timeout did not reach the "
+            "server, so a hung query would hang the health check"
+        )
+    except Exception as exc:  # noqa: BLE001 - the classification is the point
+        elapsed = time.monotonic() - started
+        assert elapsed < budget_s * 4, (
+            f"query was cancelled after {elapsed:.2f}s, far outside the "
+            f"{budget_s}s budget"
+        )
+        assert getattr(getattr(exc, "orig", None), "pgcode", None) == "57014"
+        assert _classify(exc) is ProbeVerdict.UNREACHABLE
+    finally:
+        engine.dispose()
+

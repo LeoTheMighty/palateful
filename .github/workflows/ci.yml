@@ -67,6 +67,8 @@ env:
 jobs:
   setup:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 2m09s — dependency install; a cold Poetry/yarn cache is the tail, not the median.
+    timeout-minutes: 15
     outputs:
       nx_base: ${{ steps.set-shas.outputs.base }}
       nx_head: ${{ steps.set-shas.outputs.head }}
@@ -117,6 +119,8 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 1m29s — cold cache is the tail risk, not the lint itself.
+    timeout-minutes: 15
     needs: setup
     steps:
       - uses: actions/setup-python@v5
@@ -162,6 +166,13 @@ jobs:
       - name: Deploy-freshness self-test (E-7 step 5 guard)
         run: bash tools/deploy-freshness-self-test.sh
 
+      # Same reason as above: absence-alert.yml is a workflow file, which nx
+      # does not project-map. And an absence check is the one kind whose
+      # healthy and broken states both look like silence, so the only way to
+      # keep it honest is to drive it into every verdict on each PR.
+      - name: Absence-alert self-test (absal1 guard)
+        run: bash tools/absence-alert-self-test.sh
+
       # stptr1 — a rename sweep can only fix files that exist when it runs.
       # A spec written afterwards from an older template carries a stale
       # path, and because the file is new there is no conflict to raise, so
@@ -172,6 +183,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 29m38s — max is the 4-commit accumulated range of 2026-09-24, not a single-PR run.
+    timeout-minutes: 60
     needs: setup
     services:
       postgres:
@@ -262,6 +275,8 @@ jobs:
 
   check-models:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 2m06s.
+    timeout-minutes: 15
     needs: setup
     continue-on-error: true  # Pre-existing model/migration drift; tracked separately
     services:
@@ -332,6 +347,8 @@ jobs:
     # Flutter, so `npx nx` would need setup-node + a yarn install on every
     # run to save zero duplication. Revisit if the job ever needs Node anyway.
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 8m45s — grep guards + analyze + the Dart suite.
+    timeout-minutes: 30
     steps:
       # webpr1: full history so the web-compile step below can diff
       # against the PR's base sha, which a depth-1 checkout lacks.
@@ -380,6 +397,9 @@ jobs:
 
       - name: No direct getRecipeBooks() (ffm-1 grep guard)
         run: bash tools/no-direct-get-recipe-books-check.sh
+
+      - name: No direct pantry mutations (pantrysync grep guard)
+        run: bash tools/no-direct-pantry-mutation-check.sh
 
       - name: No paywall language (pos-6a grep guard)
         run: bash tools/copy-grep-guard.sh
@@ -476,6 +496,8 @@ jobs:
   perf-budget-label:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max seconds — label API call only.
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write
@@ -487,6 +509,8 @@ jobs:
 
   terraform:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 0m22s — fmt/validate, no network beyond provider download.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -528,6 +552,8 @@ jobs:
     # in app/lib/core/config/environment.dart, so `flutter build web` needs
     # no flags. Only CLOUDFLARE_* are true secrets.
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 2m06s — build + S3 sync.
+    timeout-minutes: 20
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [setup, lint, test, check-models, flutter-test, terraform]
     environment: production
@@ -595,6 +621,8 @@ jobs:
 
   detect-changes:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 1m15s.
+    timeout-minutes: 10
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [setup, lint, test, check-models, flutter-test, terraform]
     outputs:
@@ -702,6 +730,8 @@ jobs:
   # HEAD_SHA across the board with confidence.
   resolve-tags:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 0m03s.
+    timeout-minutes: 10
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: detect-changes
     outputs:
@@ -721,6 +751,8 @@ jobs:
 
   deploy-images:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 13m20s — slowest image (parser); Docker build + ECR push.
+    timeout-minutes: 40
     needs: detect-changes
     # Skip quietly when nothing is affected — GHA errors out on an empty
     # matrix ("Matrix vector 'service' does not contain any values"), so
@@ -772,6 +804,8 @@ jobs:
 
   terraform-prod:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 0m57s — apply waits on AWS resource creation, which the observed max does not exercise.
+    timeout-minutes: 30
     # deploy-images must complete before terraform updates task defs —
     # otherwise terraform points ECS at an image tag that isn't in ECR yet,
     # ECS accumulates CannotPullContainerError attempts, and the deployment
@@ -925,6 +959,8 @@ jobs:
 
   run-migrator:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max no successful sample in the window — ECS task run + migration.
+    timeout-minutes: 20
     needs: [terraform-prod, deploy-images, detect-changes]
     if: >-
       always() &&
@@ -992,6 +1028,8 @@ jobs:
 
   deploy-services:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 3m31s — ECS rolling deploy waits for a stable service.
+    timeout-minutes: 30
     needs: [run-migrator, terraform-prod, deploy-images, detect-changes]
     if: >-
       always() &&

@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.64+91
+version: 1.0.64+92
 
 environment:
   sdk: '>=3.7.0 <4.0.0'
@@ -67,6 +67,10 @@ dependencies:
   timezone: ^0.9.4
   flutter_timezone: ^1.0.4
   shared_preferences: ^2.3.4
+  # Web-only URL strategy (usePathUrlStrategy). Imported behind a
+  # `dart.library.html` conditional so mobile builds never see it.
+  flutter_web_plugins:
+    sdk: flutter
   connectivity_plus: ^6.1.4
   share_plus: ^10.1.4
   file_picker: ^10.3.10

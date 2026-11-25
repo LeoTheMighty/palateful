@@ -4,7 +4,7 @@ type: debug
 created: 2026-09-23T00:00:00-06:00
 title: photo import has not completed since April — the parser's Batch jobs die on "no Spot capacity"
 from: dev/dev-impvis1-2026-09-22T22:00-imports-tab-shows-every-in-flight-import.md
-status: ready
+status: superseded
 owner: null
 branch: null
 ---
@@ -108,3 +108,19 @@ waiting. See its status log — the ACs were revised on this evidence.
 
 ## Status log
 - 2026-09-23T00:00 — filed from palateful-4f's production join while reviewing impvis1; their measurement, relayed, flagged for independent re-confirmation. Blocked-by: —.
+- 2026-09-23 — **superseded**, not abandoned. Same incident as `dev/dev-pcap1`,
+  filed independently from two sessions during parallel investigation. Split
+  by owner so no AC is dropped when one closes:
+  * **capacity** (on-demand fallback, wider pool, reclaim-aware retries) →
+    **`dev/dev-pcap1`**, applied 2026-09-23 as `fb2892d0`;
+  * **the permanent-vs-unlucky question** → **`dev/dev-pcap1`**, answered only
+    by its fallback drill, which records *which* compute environment an
+    attempt lands on;
+  * **independent re-confirmation before touching infrastructure** (this
+    spec's first AC) → carried into **`dev/dev-pcap1`**, owner **palateful-0e**.
+    Still owed;
+  * **write-back reconciliation** (a Batch job dies, the rows stay
+    `submitted`) → **`dev/dev-prcon1`**;
+  * **April stale state** — 14 `parser_jobs` `running` + 7 `submitted`, all
+    `parser_batch_id IS NULL` → **`dev/dev-prcon1`**, which holds the fuller
+    measurement.

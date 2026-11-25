@@ -6,24 +6,30 @@ import 'package:flutter_test/flutter_test.dart';
 /// on getIt-injected services so we exercise the helpers in isolation.
 /// (See nfn-5 QA walkthrough for the manual end-to-end smoke.)
 void main() {
+  // Every `dt` below is tagged `no-time-travel`: `_format` is an absolute
+  // formatter, so each test pins a specific weekday/date/time against the
+  // literal string it must render, and tool/time_travel_check.sh shifting
+  // the input would break the assertion without any fuse existing. The tag
+  // means the harness can't judge these lines — NOT that they're exempt
+  // from rot. Nothing here is compared against `DateTime.now()`.
   group('Meal detail — date formatter', () {
     test('Saturday April 18, 7:00 PM renders human-readable', () {
-      final dt = DateTime(2026, 4, 18, 19, 0);
+      final dt = DateTime(2026, 4, 18, 19, 0);  // no-time-travel
       expect(_format(dt), 'Saturday, Apr 18 • 7:00 PM');
     });
 
     test('Midnight renders as 12:00 AM', () {
-      final dt = DateTime(2026, 4, 18, 0, 0);
+      final dt = DateTime(2026, 4, 18, 0, 0);  // no-time-travel
       expect(_format(dt), 'Saturday, Apr 18 • 12:00 AM');
     });
 
     test('Noon renders as 12:00 PM', () {
-      final dt = DateTime(2026, 4, 18, 12, 0);
+      final dt = DateTime(2026, 4, 18, 12, 0);  // no-time-travel
       expect(_format(dt), 'Saturday, Apr 18 • 12:00 PM');
     });
 
     test('Single-digit minute is zero-padded', () {
-      final dt = DateTime(2026, 4, 18, 8, 5);
+      final dt = DateTime(2026, 4, 18, 8, 5);  // no-time-travel
       expect(_format(dt), 'Saturday, Apr 18 • 8:05 AM');
     });
   });
