@@ -166,6 +166,13 @@ jobs:
       - name: Deploy-freshness self-test (E-7 step 5 guard)
         run: bash tools/deploy-freshness-self-test.sh
 
+      # Same reason: the image-existence step (imgexist1) is a workflow file.
+      # Drives the extracted body into red (incl. a replay of the 2026-11
+      # outage), green and every no-verdict shape against a fake `aws`, and
+      # runs both notify bodies. Needs no AWS and no node_modules.
+      - name: Image-exists self-test (imgexist1 guard)
+        run: bash tools/image-exists-self-test.sh
+
       # Same reason as above: absence-alert.yml is a workflow file, which nx
       # does not project-map. And an absence check is the one kind whose
       # healthy and broken states both look like silence, so the only way to

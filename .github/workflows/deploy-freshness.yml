@@ -3,6 +3,14 @@
 # and prod still does not run it. So a silent deploy freeze (92 days, once)
 # cannot recur — and a quiet backend is not mistaken for one.
 #
+# A SECOND, INDEPENDENT CHECK runs in the same job (imgexist1): that every
+# image prod references — each service's task-definition tag, the digest ECS
+# pinned for it, each Batch job definition's tag — still exists in ECR. The
+# overdue predicate is green on a quiet backend by design; this is what stays
+# red when quiet becomes dangerous. ECR's lifecycle policy deleted the images
+# prod was running and the api/worker were down for 21/27 days (2026-10-29 to
+# 2026-11-25) while this workflow had nothing that looked. See the step.
+#
 # This lives in its OWN workflow file on purpose. The check shares its fate
 # with the CI system whose silent breakage it exists to catch; the only
 # mitigation is a separate file with its own schedule trigger, so a red
@@ -124,6 +132,15 @@ env:
   # created by hand, outside Terraform, so no address appears in this repo,
   # in plan output, or in state — CI logs here are public.
   TOPIC_NAME: palateful-prod-alerts
+  # What the image-existence step probes (imgexist1). Every ECS service whose
+  # tasks ECS must be able to re-place at any moment, and every Batch job
+  # definition prod submits by NAME (Batch resolves the newest ACTIVE revision
+  # and pulls its tag at job start). Both lists are REQUIRED: an empty list
+  # makes the step fail with no verdict, because "checked nothing" is not
+  # "nothing is missing". The migrator is deliberately absent: it only ever
+  # runs inside a deploy, with the image that deploy just pushed.
+  IMAGE_SERVICES: palateful-api-prod palateful-worker-prod
+  IMAGE_JOB_DEFINITIONS: palateful-parser-job-prod
 
 jobs:
   check-freshness:
@@ -381,14 +398,220 @@ jobs:
           echo "Prod is not overdue a deploy: ${why}"
           emit "verdict=fresh"
 
-      # Publish the verdict BEFORE failing the job, so a red verdict reaches
+      # ─────────────────────────────────────────────────────────────────────
+      # DOES THE IMAGE PROD REFERENCES STILL EXIST? (imgexist1)
+      #
+      # The overdue predicate above is deliberately green on a quiet backend
+      # at ANY image age. That is right about deploys and blind to the one
+      # way an old image hurts: ECR's lifecycle policy deleting it while prod
+      # still points at it. A running task does not need its image, so
+      # nothing breaks at deletion — it breaks at the next task replacement
+      # (a crash, Fargate maintenance, a DB-credential rotation), which can
+      # never come back up. Measured 2026-11-25:
+      #
+      #   2026-09-24 22:20Z  worker:cd6a3c3e pushed; deployed, then quiet
+      #   2026-10-24 23:48Z  ECR rule 3 ("tagged, 30 days") expires it
+      #                      (api's copy: 2026-10-25 06:40Z)
+      #   2026-10-29 04:00Z  worker task SIGTERMed; replacement cannot pull
+      #   2026-11-03 22:02Z  api task dies after the 10-29 RDS secret
+      #                      rotation; replacement cannot pull. api down.
+      #   2026-11-25 08:04Z  an unrelated deploy (#66) pins a new image
+      #
+      # 27 days without a worker, 21 without an api, under a green check.
+      # This probe would have gone red on the first run after 10-24 23:48Z,
+      # four days before the first task died.
+      #
+      # TWO references per service, because they fail independently:
+      #
+      #   - the TAG in the running task definition — what a NEW deployment of
+      #     that revision resolves (Force Deploy, a scale-out after a rollback).
+      #   - the DIGEST ECS pinned when the current deployment started
+      #     (service revision `containerImages`) — what ECS actually pulls to
+      #     REPLACE a task. Tags are MUTABLE here: re-pushing a SHA's tag
+      #     leaves the tag present while the pinned digest goes untagged, and
+      #     rule 1 expires untagged images after a day. A tag-only check is
+      #     green through that. The incident's error named the digest:
+      #     `worker:cd6a3c3e…@sha256:e7993…`.
+      #
+      # `!cancelled()`: runs whatever the overdue verdict was. The two checks
+      # are independent, and a red overdue verdict must not hide this one.
+      #
+      #   verdict=missing — measured: ECR says a referenced image is gone. Notify.
+      #   verdict=present — measured: every reference resolved. Silence.
+      #   (no verdict)    — could not measure (AWS error, non-ECR image, a CLI
+      #                     too old to return service revisions, an empty
+      #                     list). Fails, and the no-verdict notifier says so.
+      #                     NEVER `present`: a probe that cannot see must not
+      #                     report what it would have seen.
+      #
+      # Read-only: describe-services, describe-task-definition,
+      # describe-service-revisions, batch describe-job-definitions, ecr
+      # describe-images. tools/image-exists-self-test.sh drives this body
+      # into every verdict on each PR; tools/image-exists-live-check.sh runs
+      # it against real prod, including a replay of the incident's state.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Check prod's referenced images still exist in ECR
+        id: images
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+
+          # Same helper and reason as the measure step: the self-test runs
+          # this body outside Actions, under macOS bash 3.2 via the live check.
+          emit() { printf '%s\n' "$@" >> "${GITHUB_OUTPUT:-/dev/null}"; }
+          nl=$'\n'
+          tab=$(printf '\t')
+          errf=$(mktemp)
+          trap 'rm -f "$errf"' EXIT
+
+          [ -n "${IMAGE_SERVICES:-}" ] && [ -n "${IMAGE_JOB_DEFINITIONS:-}" ] || {
+            echo "::error::IMAGE_SERVICES and IMAGE_JOB_DEFINITIONS must both be set — checking nothing is not the same as nothing missing."
+            exit 1
+          }
+
+          # probe <image ref> -> prints "present <digest> <pushed-at>" or
+          # "missing <ECR exception>". Returns 1 — no verdict — whenever ECR
+          # did not answer the question, including a ref this cannot place
+          # in ECR at all.
+          probe() {
+            local ref="$1" registry path acct region repo id out
+            registry="${ref%%/*}"
+            path="${ref#*/}"
+            case "$registry" in
+              *.dkr.ecr.*.amazonaws.com) ;;
+              *) echo "::error::'${ref}' is not an ECR image reference — this check cannot see whether it exists." >&2; return 1 ;;
+            esac
+            acct="${registry%%.*}"
+            region="${registry#*.dkr.ecr.}"
+            region="${region%.amazonaws.com}"
+            case "$path" in
+              *@*) repo="${path%%@*}"; id="imageDigest=${path#*@}" ;;
+              *:*) repo="${path%:*}";  id="imageTag=${path##*:}" ;;
+              *)   repo="$path";       id="imageTag=latest" ;;
+            esac
+            if out=$(aws ecr describe-images --registry-id "$acct" --region "$region" \
+                  --repository-name "$repo" --image-ids "$id" \
+                  --query 'imageDetails[0].[imageDigest,imagePushedAt]' \
+                  --output text 2>"$errf" </dev/null); then
+              case "$out" in
+                # pushed-at renders as ISO under CLI v2, epoch under v1:
+                # informational only, so either is fine.
+                sha256:*) echo "present ${out%%"$tab"*}, pushed ${out#*"$tab"}"; return 0 ;;
+              esac
+              echo "::error::ECR answered for ${ref} without an image digest ('${out}')." >&2
+              return 1
+            fi
+            if grep -qE 'ImageNotFoundException|RepositoryNotFoundException' "$errf"; then
+              echo "missing $(grep -oE '(ImageNotFound|RepositoryNotFound)Exception' "$errf" | head -1)"
+              return 0
+            fi
+            echo "::error::ECR could not answer for ${ref}: $(tr '\n' ' ' < "$errf")" >&2
+            return 1
+          }
+
+          checked=0
+          findings=""
+          # record <who> <what the reference is> <ref> <probe result>
+          record() {
+            checked=$(( checked + 1 ))
+            case "$4" in
+              present*) echo "  present  ${1}: ${2} ${3} (${4#present })" ;;
+              missing*)
+                echo "::error::${1}: ${2} ${3} — ECR: ${4#missing }"
+                findings="${findings}${findings:+$nl}- ${1}: ${2} ${3} — ECR: ${4#missing }" ;;
+              *) echo "::error::internal: unexpected probe result '${4}'"; exit 1 ;;
+            esac
+          }
+
+          for svc in $IMAGE_SERVICES; do
+            # The revision ARN in service, never the family shortcut (see the
+            # measure step's FAMILY-SHORTCUT TRAP).
+            td=$(aws ecs describe-services --cluster "$CLUSTER" --services "$svc" \
+              --query 'services[0].taskDefinition' --output text </dev/null)
+            case "$td" in
+              ""|None) echo "::error::ECS service ${svc} not found in ${CLUSTER}."; exit 1 ;;
+            esac
+            imgs=$(aws ecs describe-task-definition --task-definition "$td" \
+              --query 'taskDefinition.containerDefinitions[].image' --output text </dev/null)
+            case "$imgs" in
+              ""|None) echo "::error::${td} lists no container images."; exit 1 ;;
+            esac
+            for img in $imgs; do
+              r=$(probe "$img")
+              record "$svc" "task definition ${td##*/} tag" "$img" "$r"
+            done
+
+            revs=$(aws ecs describe-services --cluster "$CLUSTER" --services "$svc" \
+              --query 'services[0].currentServiceRevisions[].arn' --output text </dev/null)
+            case "$revs" in
+              ""|None) echo "::error::ECS returned no currentServiceRevisions for ${svc}, so the digest it would pull to replace a task cannot be read (an AWS CLI too old to know the field lands here too)."; exit 1 ;;
+            esac
+            for rev in $revs; do
+              pairs=$(aws ecs describe-service-revisions --service-revision-arns "$rev" \
+                --query 'serviceRevisions[0].containerImages[].[image,imageDigest]' \
+                --output text </dev/null)
+              case "$pairs" in
+                ""|None) echo "::error::service revision ${rev##*/} of ${svc} lists no container images."; exit 1 ;;
+              esac
+              while IFS="$tab" read -r img dig; do
+                [ -n "$img" ] || continue
+                case "$dig" in
+                  sha256:*) ;;
+                  *) echo "::error::service revision ${rev##*/} of ${svc} pinned no digest for ${img} ('${dig}')."; exit 1 ;;
+                esac
+                r=$(probe "${img%%[:@]*}@${dig}")
+                record "$svc" "revision ${rev##*/} pinned digest of" "${img}@${dig}" "$r"
+              done <<< "$pairs"
+            done
+          done
+
+          for jd in $IMAGE_JOB_DEFINITIONS; do
+            # Prod submits by NAME, so Batch runs the newest ACTIVE revision
+            # and resolves its tag when the job starts. No digest is pinned.
+            got=$(aws batch describe-job-definitions --job-definition-name "$jd" --status ACTIVE \
+              --query 'reverse(sort_by(jobDefinitions, &revision))[0].[revision, containerProperties.image]' \
+              --output text </dev/null)
+            jrev="${got%%"$tab"*}"
+            img="${got#*"$tab"}"
+            case "$jrev:$img" in
+              None*|*:None|*:) echo "::error::Batch job definition ${jd} has no ACTIVE revision with a container image ('${got}')."; exit 1 ;;
+            esac
+            r=$(probe "$img")
+            record "$jd" "job definition revision ${jrev} tag" "$img" "$r"
+          done
+
+          echo "Checked ${checked} image reference(s)."
+          emit "images_checked=${checked}"
+          if [ -n "$findings" ]; then
+            # Multi-line output: GitHub's delimiter form, so the notify step
+            # gets one finding per line.
+            {
+              echo "verdict=missing"
+              echo "detail<<__IMGEXIST_DETAIL__"
+              printf '%s\n' \
+                "Prod references an image that no longer exists in ECR. ECS cannot start a replacement task for what is listed below, so the next task restart — a crash, Fargate maintenance, an RDS credential rotation — is an outage that does not heal on its own. Running tasks are unaffected until then: this is the window to act in." \
+                "" \
+                "$findings" \
+                "" \
+                "Act now: run the Force Deploy workflow, which rebuilds every image at main's head and pins new digests. Then find out what deleted it: the lifecycle policy in terraform/modules/ecr/main.tf (rule 3 expires tagged images 30 days after push), or CloudTrail PolicyExecutionEvent / BatchDeleteImage."
+              echo "__IMGEXIST_DETAIL__"
+            } >> "${GITHUB_OUTPUT:-/dev/null}"
+            exit 1
+          fi
+          echo "Every image prod references exists in ECR."
+          emit "verdict=present"
+
+      # Publish the verdicts BEFORE failing the job, so a red verdict reaches
       # a human instead of sitting in a run nobody opens. Guarded on a
-      # verdict actually existing: see the no-verdict note above.
+      # verdict actually existing: see the no-verdict note above. One message
+      # per red verdict, so each subject says what is wrong.
       - name: Notify on a red verdict
-        if: always() && (steps.measure.outputs.verdict == 'stale' || steps.measure.outputs.verdict == 'unknown')
+        if: always() && (steps.measure.outputs.verdict == 'stale' || steps.measure.outputs.verdict == 'unknown' || steps.images.outputs.verdict == 'missing')
         env:
           VERDICT: ${{ steps.measure.outputs.verdict }}
           DETAIL: ${{ steps.measure.outputs.detail }}
+          IMAGES_VERDICT: ${{ steps.images.outputs.verdict }}
+          IMAGES_DETAIL: ${{ steps.images.outputs.detail }}
         run: |
           set -euo pipefail
 
@@ -400,25 +623,36 @@ jobs:
             --output text)
 
           if [ -z "$topic_arn" ] || [ "$topic_arn" = "None" ]; then
-            echo "::error::Alert topic '${TOPIC_NAME}' not found — the verdict below reached nobody."
+            echo "::error::Alert topic '${TOPIC_NAME}' not found — the verdict(s) below reached nobody."
             echo "$DETAIL"
+            echo "$IMAGES_DETAIL"
             exit 1
           fi
 
           # Built with printf rather than a literal multi-line string: an
           # unindented continuation line inside `run: |` silently ends the
           # block and breaks the whole workflow file.
-          message=$(printf '%s\n\nWorkflow run: %s/%s/actions/runs/%s\n\n%s\n' \
-            "$DETAIL" \
-            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" \
-            "This is a measured verdict about prod, not a CI failure: the check reached AWS, read the running task definition, and this is what it found.")
+          publish() {  # $1 = subject suffix, $2 = detail
+            local message
+            message=$(printf '%s\n\nWorkflow run: %s/%s/actions/runs/%s\n\n%s\n' \
+              "$2" \
+              "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" \
+              "This is a measured verdict about prod, not a CI failure: the check reached AWS, read what prod is running, and this is what it found.")
+            aws sns publish \
+              --topic-arn "$topic_arn" \
+              --subject "palateful prod: $1" \
+              --message "$message" > /dev/null
+            echo "Published '$1' to ${TOPIC_NAME}."
+          }
 
-          aws sns publish \
-            --topic-arn "$topic_arn" \
-            --subject "palateful prod: deploy-freshness ${VERDICT}" \
-            --message "$message" > /dev/null
-
-          echo "Published '${VERDICT}' verdict to ${TOPIC_NAME}."
+          case "$VERDICT" in
+            stale|unknown) publish "deploy-freshness ${VERDICT}" "$DETAIL" ;;
+          esac
+          # Subjects are ASCII on purpose: SNS rejects a non-ASCII Subject
+          # with InvalidParameter, and the alert would fail at the last step.
+          if [ "$IMAGES_VERDICT" = missing ]; then
+            publish "IMAGE MISSING from ECR - next task restart is an outage" "$IMAGES_DETAIL"
+          fi
 
 
       # THE CHECK'S OWN DEATH HAS TO LEAVE GITHUB TOO.
@@ -442,8 +676,15 @@ jobs:
       # ABSENCE of an expected heartbeat from outside, can. Do not read this
       # step as making absal1 optional. It narrows the blind spot from "any
       # failure" to "credential failure"; it does not remove it.
+      #
+      # Covers BOTH measuring steps: either one dying without a verdict fires
+      # it, and the message names which. (A green overdue verdict must not
+      # mask an image probe that could not see, or the reverse.)
       - name: Notify when the check itself failed to reach a verdict
-        if: failure() && steps.measure.outputs.verdict == ''
+        if: failure() && (steps.measure.outputs.verdict == '' || steps.images.outputs.verdict == '')
+        env:
+          MEASURE_VERDICT: ${{ steps.measure.outputs.verdict }}
+          IMAGES_VERDICT: ${{ steps.images.outputs.verdict }}
         run: |
           set -euo pipefail
 
@@ -459,10 +700,14 @@ jobs:
             exit 1
           fi
 
+          blind=""
+          [ -n "$MEASURE_VERDICT" ] || blind="${blind} whether prod is overdue a deploy;"
+          [ -n "$IMAGES_VERDICT" ] || blind="${blind} whether the images prod references still exist in ECR;"
+
           message=$(printf '%s\n\nWorkflow run: %s/%s/actions/runs/%s\n\n%s\n' \
-            "deploy-freshness could not measure prod: the check failed before reaching a verdict. Prod's deploy freshness is UNKNOWN right now — this is not a report that prod is fine." \
+            "deploy-freshness could not measure prod: a check failed before reaching a verdict. UNKNOWN right now:${blind} this is not a report that prod is fine." \
             "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" \
-            "Until this is fixed, the deploy-freeze detector is not running. It failed silently for 52 consecutive runs once before.")
+            "Until this is fixed, the detector is not running. It failed silently for 52 consecutive runs once before.")
 
           aws sns publish \
             --topic-arn "$topic_arn" \
