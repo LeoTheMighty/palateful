@@ -191,6 +191,14 @@ jobs:
       - name: No stale workstream pointers (stptr1 guard)
         run: python3 tools/stale-pointer-check.py
 
+      # Unconditional for the same reason: it reads every project.json, and
+      # the failure it guards (covcomb1) only shows under `-t test
+      # --parallel`, never when a target is run on its own.
+      - name: Pytest coverage-file isolation (covcomb1 guard)
+        run: |
+          python3 tools/pytest-coverage-isolation-check.py --self-test
+          python3 tools/pytest-coverage-isolation-check.py
+
   test:
     runs-on: ubuntu-latest
     # Ceiling, not a target: observed max 29m38s — max is the 4-commit accumulated range of 2026-09-24, not a single-PR run.

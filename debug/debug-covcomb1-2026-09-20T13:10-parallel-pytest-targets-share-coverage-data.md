@@ -4,9 +4,9 @@ type: debug
 created: 2026-09-20T13:10:00-06:00
 title: Parallel pytest targets share one coverage data file — local-green, CI-red
 from: dev/dev-rsh102-2026-07-27T12:31-credential-aware-health-probe.md
-status: ready
-owner: null
-branch: null
+status: in-review
+owner: claude
+branch: fix/covcomb1-coverage-file-isolation
 ---
 
 ## Goal
@@ -46,22 +46,22 @@ trap that only springs under parallelism.
 
 ## Acceptance criteria
 
-- [ ] Every pytest target that runs from `{workspaceRoot}` writes its
+- [x] Every pytest target that runs from `{workspaceRoot}` writes its
       coverage data somewhere unique — `COVERAGE_FILE` per project, or
       `cwd: {projectRoot}` where that is workable. rsh102 fixed `utils` only,
       because that was the target it broke; `test-helper` and `migrator` are
       still sharing and will collide the next time the two differ.
-- [ ] A regression check that fails when two workspace-root pytest targets
+- [x] A regression check that fails when two workspace-root pytest targets
       would share a coverage data file. Grep-level is fine — the point is
       that it fires without anyone having to run the parallel combination.
-- [ ] `libraries/utils/pyproject.toml`'s `../../`-prefixed report paths are
+- [x] `libraries/utils/pyproject.toml`'s `../../`-prefixed report paths are
       either corrected or documented. They resolve against the invocation
       cwd, not the rootdir, so the package default writes reports two levels
       above the repo — outside it in CI, and into the main checkout when run
       from a worktree. rsh102 pinned the paths in the nx target as a
       workaround; the package default is still wrong for anyone running
       pytest from the workspace root by hand.
-- [ ] Document the trap wherever the nx target conventions live, so the next
+- [x] Document the trap wherever the nx target conventions live, so the next
       person adding a coverage flag to one project learns about the shared
       cwd before CI tells them.
 
@@ -83,3 +83,18 @@ trap that only springs under parallelism.
   `utils` inside rsh102 (`6d375e71`); this item covers the siblings still
   sharing, the missing regression check, and the `pyproject.toml` report
   paths. Repro confirmed in both directions before the fix was committed.
+- 2026-09-22 — fixed on `fix/covcomb1-coverage-file-isolation` (hand-run, not
+  via `/devx`: main is a held deploy lane, so no claim commit was pushed).
+  `test-helper` and `migrator` now set `COVERAGE_FILE` per project and pin
+  their report paths in the nx target, like `utils`. The `../../` report paths
+  were removed from all three `pyproject.toml` addopts (they resolved against
+  the invocation cwd); addopts is now `--cov --cov-report=term` — `--cov`
+  cannot be last, because its optional value swallows the nx-passed test path
+  and pytest collects the whole repo (hit and fixed during this item). Guard:
+  `tools/pytest-coverage-isolation-check.py` (+ `--self-test`), run
+  unconditionally in the CI lint job. Trap documented in `docs/SETUP.md`,
+  "Python test targets". Verified under concurrency, 3 runs each direction,
+  with `--cov-branch` added to `test-helper` only: fix present, 3/3 green;
+  origin/main configs, 3/3 `DataError`. Plain
+  `nx run-many -t test --projects=utils,test-helper,migrator --parallel=3`:
+  green, `coverage gate OK`, reports all under the repo, none above it.
